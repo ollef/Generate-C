@@ -1,6 +1,7 @@
 {-# LANGUAGE EmptyDataDecls
            , FlexibleContexts
            , FlexibleInstances
+           , GeneralizedNewtypeDeriving
            , MultiParamTypeClasses
            , ScopedTypeVariables
            , TypeOperators #-}
@@ -8,25 +9,21 @@
 module Language.C.Generate.Generate where
 
 import Control.Monad
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Writer
 import Data.List
-import Data.Functor.Identity
 
 import Language.C.Generate.TypeLists
 
 -------------------------------------------------------------------------------
 -- Fixity declarations
 -------------------------------------------------------------------------------
-infixl 8 !.
-infixl 7 *., /.
-infixl 6 +., -.
-infix  4 ==., /=., <., >., <=., >=.
-infix  3 &&.
-infix  2 ||.
-infixr 2 :->
-infix  1 =., =:
+infixl 9 !.
+infixl 8 *., /.
+infixl 7 +., -.
+infix  5 ==., /=., <., >., <=., >=.
+infix  4 &&.
+infix  3 ||.
+infix  1 =., =:, :->
 infixr 0 $$
 
 -------------------------------------------------------------------------------
@@ -46,13 +43,8 @@ class Monad m => MonadEmit m where
   runEmit :: m a -> (a, String)
   emit    :: String -> m ()
 
-type Emit a = Writer String a
 emitLn :: MonadEmit m => String -> m ()
 emitLn x = emit $ '\n' : x
-
-instance MonadEmit (WriterT String Identity) where
-  runEmit = runWriter
-  emit    = tell
 
 braces :: MonadEmit m => m () -> m ()
 braces x = do
@@ -63,10 +55,6 @@ braces x = do
 indent :: MonadEmit m => m () -> m ()
 indent = emit . unlines . map ('\t' :) . lines . snd . runEmit
 
-type TypedT t m a = IdentityT m a
-runTypedT :: TypedT t m a -> m a
-runTypedT = runIdentityT
-
 -------------------------------------------------------------------------------
 -- Code generation
 -------------------------------------------------------------------------------
@@ -75,21 +63,26 @@ class Generate a where
   --   'RValue's, 'LValue's, 'Stmt's and 'Decl's. Using it for anything other
   --   than 'Decl' is mostly for debugging purposes (or for use with 'trustMe').
   generate :: a -> String
-instance ToRValue t => Generate (t a) where
+instance Generate (RValue a) where
   generate = unRValue
-instance Generate (WriterT String Identity a) where
+instance Generate (LValue a) where
+  generate = unRValue
+instance Generate (Stmt r a) where
   generate = snd . runEmit
-instance Generate (IdentityT (WriterT String Identity) a) where
+instance Generate (Decl a) where
   generate = snd . runEmit
 
 -------------------------------------------------------------------------------
 -- Haskell to C types
 -------------------------------------------------------------------------------
+-- | Values that can be used on the left-hand side of assignments.
 newtype LValue a = LValue {unLValue :: String} deriving Show
+-- | Expressions.
 newtype RValue a = RValue String deriving Show
 
--- | Conversion to RValues.
-class ToRValue t where rvalue :: t a -> RValue a
+class ToRValue t where
+  -- | Conversion to 'RValue's.
+  rvalue :: t a -> RValue a
 instance ToRValue RValue where rvalue = id
 instance ToRValue LValue where rvalue (LValue x) = RValue x
 unRValue :: ToRValue t => t a -> String
@@ -290,13 +283,12 @@ trustMe = LValue
 -- Statements
 ------------------------------------------------------------------------------
 -- | Statements typed with the return type of the function they're in.
-type Stmt t a = TypedT t (Writer String) a
-runStmt :: Stmt t () -> String
-runStmt = snd . runEmit . runTypedT
+newtype Stmt r a = Stmt {unStmt :: Writer String a}
+  deriving (Monad)
 
-instance MonadEmit m => MonadEmit (IdentityT m) where
-  runEmit = runEmit . runIdentityT
-  emit    = lift . emit
+instance MonadEmit (Stmt r) where
+  runEmit = runWriter . unStmt
+  emit    = Stmt . tell
 
 -- | Statement from a value.
 stmt :: ToRValue t => t a -> Stmt r ()
@@ -417,9 +409,11 @@ continue = emitLn "continue;"
 ------------------------------------------------------------------------------
 -- Declarations (top-level)
 ------------------------------------------------------------------------------
-type Decl a = Writer String a
-runDecl :: Decl a -> (a, String)
-runDecl = runWriter
+newtype Decl a = Decl {unDecl :: Writer String a}
+  deriving (Monad)
+instance MonadEmit Decl where
+  runEmit = runWriter . unDecl
+  emit    = Decl . tell
 
 ------------------------------------------------------------------------------
 -- Preprocessor directives
@@ -488,7 +482,7 @@ defineNewFunction name args f = do
   emitLn $ typeOf (undefined :: b) name
         ++ tuple (functionDef args (undefined :: as))
   braces $
-    emit $ runStmt $ f (Function name) $ functionParams args (undefined :: as)
+    emit $ snd . runEmit $ f (Function name) $ functionParams args (undefined :: as)
   return $ Function name
 
 -- | Define a function that has been declared before.

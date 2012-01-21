@@ -4,7 +4,7 @@ module Language.C.Generate
   -- * Code generation
     Generate, generate
   -- * C types
-  , LValue, RValue, Ptr, (:->), Type, typeOf
+  , LValue, RValue, Ptr, (:->), Type, typeOf, ToRValue, rvalue
   -- * Expressions
   , sizeof, cond
   -- ** Pointers

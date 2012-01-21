@@ -3,7 +3,7 @@
 module Language.C.Generate.TypeLists where
 
 data a :* b = a :* b deriving (Eq, Ord, Show)
-infixr 3 :*
+infixr 2 :*
 
 {-
 class TypeList a where
