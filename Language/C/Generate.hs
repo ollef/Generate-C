@@ -1,8 +1,9 @@
+-- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate
   (
   -- * Code generation
     Generate, generate
-  -- * Haskell to C types
+  -- * C types
   , LValue, RValue, Ptr, (:->), Type, typeOf
   -- * Expressions
   , sizeof, cond
@@ -21,6 +22,7 @@ module Language.C.Generate
     -- | Boolean and, boolean or.
   , (+.), (-.), (*.), (/.)
     -- | Addition, subtraction, multiplication, division.
+
   -- ** Function calls
   , ($$)
   -- ** Untrusted code

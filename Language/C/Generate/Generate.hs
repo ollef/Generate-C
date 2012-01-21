@@ -4,8 +4,9 @@
            , MultiParamTypeClasses
            , ScopedTypeVariables
            , TypeOperators #-}
--- | A reasonably typesafe C code generation DSL.
+-- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate.Generate where
+
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Identity
@@ -65,13 +66,14 @@ indent = emit . unlines . map ('\t' :) . lines . snd . runEmit
 type TypedT t m a = IdentityT m a
 runTypedT :: TypedT t m a -> m a
 runTypedT = runIdentityT
+
 -------------------------------------------------------------------------------
 -- Code generation
 -------------------------------------------------------------------------------
 class Generate a where
   -- | Generate C code from something. This allows you to generate code from
   --   'RValue's, 'LValue's, 'Stmt's and 'Decl's. Using it for anything other
-  --   than @Decl@ is mostly for debugging purposes.
+  --   than 'Decl' is mostly for debugging purposes (or for use with 'trustMe').
   generate :: a -> String
 instance ToRValue t => Generate (t a) where
   generate = unRValue
@@ -190,7 +192,7 @@ castFun = fun . cast . funPtr
 
 -------------------------------------------------------------------------------
 -- Numeric
--- | The subset of @Type@s which you can do numeric operations on and create
+-- | The subset of 'Type's which you can do numeric operations on and create
 --   constant literals of.
 class Type a => NumType a where
   lit :: a -> RValue a
@@ -255,6 +257,7 @@ binop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
 (-.) = binop "-"
 (*.) = binop "*"
 (/.) = binop "/"
+
 ------------------------------------------------------------------------------
 -- Function calls
 -- | Get a list of arguments from a list of 'RValue's.
@@ -278,10 +281,10 @@ f $$ as = RValue $ unFunction f
 ------------------------------------------------------------------------------
 -- Untrusted code
 -- | \"Trust me, I know what I'm doing\". Insert whatever code you want as an
---   'RValue' at any type.
+--   'LValue' at any type.
 trustMe :: String   -- ^ C code
-        -> RValue a
-trustMe = RValue
+        -> LValue a
+trustMe = LValue
 
 ------------------------------------------------------------------------------
 -- Statements
@@ -506,10 +509,10 @@ defineFunction (Function name) args f = do
 
 ------------------------------------------------------------------------------
 -- Main
--- | The type of the main function (int main(int argc, int** argv)).
+-- | The type of the main function (@int main(int argc, int** argv)@).
 type MainType = (Int :* Ptr (Ptr Int) :* ()) :-> Int
 
--- | Create a function called main with parameters argc and argv.
+-- | Create a function called main with parameters @argc@ and @argv@.
 makeMain :: (MainType
               -> (LValue Int :* LValue (Ptr (Ptr Int)) :* ())
               -> Stmt Int ()
