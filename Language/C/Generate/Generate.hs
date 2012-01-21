@@ -66,7 +66,7 @@ type TypedT t m a = IdentityT m a
 runTypedT :: TypedT t m a -> m a
 runTypedT = runIdentityT
 -------------------------------------------------------------------------------
--- * Code generation
+-- Code generation
 -------------------------------------------------------------------------------
 class Generate a where
   -- | Generate C code from something. This allows you to generate the
@@ -81,7 +81,7 @@ instance Generate (IdentityT (WriterT String Identity) a) where
   generate = snd . runEmit
 
 -------------------------------------------------------------------------------
--- * Haskell to C types
+-- Haskell to C types
 -------------------------------------------------------------------------------
 newtype LValue a = LValue {unLValue :: String} deriving Show
 newtype RValue a = RValue String deriving Show
