@@ -69,8 +69,8 @@ runTypedT = runIdentityT
 -- Code generation
 -------------------------------------------------------------------------------
 class Generate a where
-  -- | Generate C code from something. This allows you to generate the
-  --   code for most things in the module. Using it for anything other
+  -- | Generate C code from something. This allows you to generate code from
+  --   'RValue's, 'LValue's, 'Stmt's and 'Decl's. Using it for anything other
   --   than @Decl@ is mostly for debugging purposes.
   generate :: a -> String
 instance ToRValue t => Generate (t a) where
@@ -257,7 +257,7 @@ binop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
 (/.) = binop "/"
 ------------------------------------------------------------------------------
 -- Function calls
--- | Get a list of arguments from a list of RValues.
+-- | Get a list of arguments from a list of 'RValue's.
 class FunctionArgs as types where
   functionArgs :: as -> types -> [String]
 instance FunctionArgs () () where
@@ -275,6 +275,13 @@ instance (ToRValue t, FunctionArgs as types)
 f $$ as = RValue $ unFunction f
                 ++ tuple (functionArgs as (undefined :: types))
 
+------------------------------------------------------------------------------
+-- Untrusted code
+-- | \"Trust me, I know what I'm doing\". Insert whatever code you want as an
+--   'RValue' at any type.
+trustMe :: String   -- ^ C code
+        -> RValue a
+trustMe = RValue
 
 ------------------------------------------------------------------------------
 -- Statements
@@ -414,7 +421,7 @@ runDecl = runWriter
 ------------------------------------------------------------------------------
 -- Preprocessor directives
 -- | Include directive.
-include :: String -- ^ File; either \"\<file.h\>\" or \"\\\"file.h\\\"\"
+include :: String -- ^ Filename; either \"\<file.h\>\" or \"\\\"file.h\\\"\"
         -> Decl ()
 include file = emitLn $ "#include" <+> file
 
@@ -440,7 +447,7 @@ declareFunction name = do
         ++ tuple (typeListTypes (undefined :: as)) ++ ";"
   return $ Function name
 
--- | Get a typed list of LValue parameters with the right names.
+-- | Get a typed list of 'LValue' parameters with the right names.
 class FunctionParams names types params where
   functionParams :: names -> types -> params
 instance FunctionParams () () () where

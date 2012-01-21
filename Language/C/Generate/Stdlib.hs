@@ -7,7 +7,6 @@ module Language.C.Generate.Stdlib
   , free
   ) where
 
-import Language.C.Generate.Generate
 import Language.C.Generate
 
 -- | #include <stdlib.h>
@@ -15,10 +14,10 @@ includeStdlib :: Decl ()
 includeStdlib = include "<stdlib.h>"
 
 mallocFun :: Int :* () :-> Ptr ()
-mallocFun = Function "malloc"
+mallocFun = fun $ trustMe "malloc"
 
 freeFun :: Ptr () :* () :-> ()
-freeFun = Function "free"
+freeFun = fun $ trustMe "free"
 
 -- | Allocate memory (sizeof(type)).
 malloc :: forall a. Type a

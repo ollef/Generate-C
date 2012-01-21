@@ -23,6 +23,8 @@ module Language.C.Generate
     -- | Addition, subtraction, multiplication, division.
   -- ** Function calls
   , ($$)
+  -- ** Untrusted code
+  , trustMe
   -- * Statements
   , Stmt, stmt
   , retvoid, ret

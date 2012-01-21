@@ -15,7 +15,7 @@ Author: Olle Fredriksson
 
     > cabal install
 
-  The includes Makefile will install the package and generate documentation.
+  The included Makefile will install the package and generate documentation.
 
 * Documentation
 
