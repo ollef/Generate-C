@@ -1,11 +1,10 @@
 {-# LANGUAGE FlexibleContexts
            , FlexibleInstances
-           , GADTs
            , MultiParamTypeClasses
            , ScopedTypeVariables
            , TypeOperators #-}
 -- | A reasonably typesafe C code generation DSL.
-module CGen where
+module Language.C.Generate where
 
 import Control.Monad.Identity
 import Control.Monad.Trans.Identity
@@ -13,26 +12,31 @@ import Control.Monad.Writer
 import Data.List
 import Data.Char
 
-import TypeLists
+import Language.C.Generate.TypeLists
 
 -------------------------------------------------------------------------------
 -- Fixity declarations
 -------------------------------------------------------------------------------
+infixl 8 !.
 infixl 7 *., /.
 infixl 6 +., -.
-infix  4 ==., /=.
-infix  2 =., =:
+infix  4 ==., /=., <., >., <=., >=.
+infix  3 &&.
+infix  2 ||.
 infixr 2 :->
+infix  1 =., =:
 infixr 0 $$
 
 -------------------------------------------------------------------------------
--- Helpers
+-- Helper functions
 -------------------------------------------------------------------------------
 (<+>) :: String -> String -> String
 x <+> "" = x
 x <+> y  = x ++ " " ++ y
 parens :: String -> String
 parens s = "(" ++ s ++ ")"
+brackets :: String -> String
+brackets s = "[" ++ s ++ "]"
 tuple :: [String] -> String
 tuple ss = parens $ intercalate ", " ss
 
@@ -66,6 +70,7 @@ runTypedT = runIdentityT
 -------------------------------------------------------------------------------
 newtype LValue a = LValue {unLValue :: String} deriving Show
 newtype RValue a = RValue String deriving Show
+
 -- | Conversion to RValues.
 class ToRValue t where rvalue :: t a -> RValue a
 instance ToRValue RValue where rvalue = id
@@ -73,6 +78,7 @@ instance ToRValue LValue where rvalue (LValue x) = RValue x
 unRValue :: ToRValue t => t a -> String
 unRValue x = case rvalue x of
   RValue s -> s
+
 -- | Pointer type.
 data Ptr a
 -- | Function type.
@@ -89,8 +95,6 @@ instance Type Int where
   typeOf _ v = "int" <+> v
 instance Type Char where
   typeOf _ v = "char" <+> v
-instance Type Bool where
-  typeOf _ v = "int" <+> v
 instance Type () where
   typeOf _ v = "void" <+> v
 instance Type Float where
@@ -119,22 +123,6 @@ instance (Type a, TypeListTypes as) => TypeListTypes (a :* as) where
 ------------------------------------------------------------------------------
 -- * Expressions
 ------------------------------------------------------------------------------
--- | Get the address of a value.
-address :: ToRValue t => t a -> LValue (Ptr a)
-address x = LValue $ parens $ "&" ++ unRValue x
-
--- | Dereference a pointer.
-deref :: ToRValue t => t a -> LValue a
-deref x = LValue $ parens $ "*" ++ unRValue x
-
--- | Type cast.
-cast :: ToRValue t => t a -> RValue b
-cast = RValue . unRValue
-
--- | Type cast a function.
-castFun :: bs :-> a -> bs' :-> a'
-castFun = fun . cast . funPtr
-
 -- | Size of a datatype.
 sizeof :: Type t => t -> RValue Int
 sizeof x = RValue $ "sizeof" ++ parens (typeOf x "")
@@ -144,6 +132,45 @@ cond :: (Type a, ToRValue t, ToRValue t', ToRValue t'')
      => t Int -> t' a -> t'' a -> RValue a
 cond pred t f = RValue $ parens
               $ unRValue pred <+> "?" <+> unRValue t <+> ":" <+> unRValue f
+
+-------------------------------------------------------------------------------
+-- ** Pointers
+-- | Get the address of a value.
+address :: ToRValue t => t a -> LValue (Ptr a)
+address x = LValue $ parens $ "&" ++ unRValue x
+
+-- | Dereference a pointer.
+deref :: ToRValue t => t a -> LValue a
+deref x = LValue $ parens $ "*" ++ unRValue x
+
+-- | Function to function pointer.
+funPtr :: b :-> as -> RValue (b :-> as)
+funPtr (Function name) = RValue name
+
+-- | Function pointer to function.
+fun :: ToRValue t => t (b :-> as) -> b :-> as
+fun x = Function $ unRValue x
+
+-- | Null pointer.
+nullPtr :: RValue (Ptr a)
+nullPtr = RValue "0"
+
+-- | Array indexing.
+(!.) :: (ToRValue t, ToRValue t')
+     => t (Ptr a) -> t' Int -> LValue a
+arr !. i = LValue $ unRValue arr ++ brackets (unRValue i)
+
+-------------------------------------------------------------------------------
+-- ** Memory allocation
+-------------------------------------------------------------------------------
+-- ** Type casting
+-- | Type cast.
+cast :: ToRValue t => t a -> RValue b
+cast = RValue . unRValue
+
+-- | Type cast a function.
+castFun :: bs :-> a -> bs' :-> a'
+castFun = fun . cast . funPtr
 
 -------------------------------------------------------------------------------
 -- ** Numeric
@@ -172,55 +199,57 @@ double = lit
 -- | Char literal.
 char :: Char -> RValue Char
 char = lit
+-- | Bool literal.
+bool :: Bool -> RValue Int
+bool False = lit 0
+bool True  = lit 1
 
 boolbinop :: (Type a, ToRValue t, ToRValue t')
           => String -> t a -> t' a -> RValue Int
 boolbinop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
 
+(==.), (/=.)
+  :: (Type a, ToRValue t, ToRValue t')
+  => t a -> t' a -> RValue Int
 -- | Equality.
-(==.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (==.) = boolbinop "=="
 -- | Inequality.
-(/=.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (/=.) = boolbinop "!="
+
+(<.), (>.), (<=.), (>=.)
+  :: (Type a, NumType a, ToRValue t, ToRValue t')
+  => t a -> t' a -> RValue Int
 -- | Less than.
-(<.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (<.) = boolbinop "<"
 -- | Greater than.
-(>.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (>.) = boolbinop ">"
 -- | Less than or equal.
-(<=.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (<=.) = boolbinop "<="
 -- | Greater than or equal.
-(>=.) :: (Type a, ToRValue t, ToRValue t')
-      => t a -> t' a -> RValue Int
 (>=.) = boolbinop ">="
+
+(&&.), (||.)
+  :: (ToRValue t, ToRValue t')
+  => t Int -> t' Int -> RValue Int
+-- | Boolean and.
+(&&.) = boolbinop "&&"
+-- | Boolean or.
+(||.) = boolbinop "||"
 
 binop :: (Type a, ToRValue t, ToRValue t')
       => String -> t a -> t' a -> RValue a
 binop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
 
+(*.), (+.), (-.), (/.)
+  :: (Type a, NumType a, ToRValue t, ToRValue t')
+  => t a -> t' a -> RValue a
 -- | Multiplication.
-(*.) :: (Type a, NumType a, ToRValue t, ToRValue t')
-     => t a -> t' a -> RValue a
 (*.) = binop "*"
 -- | Addition.
-(+.) :: (Type a, NumType a, ToRValue t, ToRValue t')
-     => t a -> t' a -> RValue a
 (+.) = binop "+"
 -- | Subtraction.
-(-.) :: (Type a, NumType a, ToRValue t, ToRValue t')
-     => t a -> t' a -> RValue a
 (-.) = binop "-"
 -- | Division.
-(/.) :: (Type a, NumType a, ToRValue t, ToRValue t')
-     => t a -> t' a -> RValue a
 (/.) = binop "/"
 
 ------------------------------------------------------------------------------
@@ -331,9 +360,16 @@ while p s = do
 
 -- | For loops.
 for :: ToRValue t
-    => t Int
-    -> t Int
-    -> 
+    => t a       -- ^ Initialise
+    -> t Int     -- ^ Predicate
+    -> t b       -- ^ Increase
+    -> Stmt r () -- ^ Loop body
+    -> Stmt r ()
+for init p inc s = do
+  emitLn $ "for" <+> parens (unRValue init ++ ";"
+                         <+> unRValue p    ++ ";"
+                         <+> unRValue inc)
+  braces s
 
 -- | Break.
 cbreak :: Stmt r ()
@@ -349,6 +385,21 @@ continue = emitLn "continue;"
 type Decl a = Writer String a
 runDecl :: Decl a -> (a, String)
 runDecl = runWriter
+
+------------------------------------------------------------------------------
+-- ** Preprocessor directives
+include :: String -- ^ File; either "<file.h>" or "\"file.h\""
+        -> Decl ()
+include file = emitLn $ "#include" <+> file
+
+------------------------------------------------------------------------------
+-- ** Global variables
+declareGlobal :: forall a. Type a
+              => String          -- ^ Global name
+              -> Decl (LValue a) -- ^ Global variable
+declareGlobal name = do
+  emitLn (typeOf (undefined :: a) name)
+  return $ LValue name
 
 ------------------------------------------------------------------------------
 -- ** Functions
@@ -445,89 +496,3 @@ makeMain :: (MainType
               -> Stmt Int ()
             ) -> Decl MainType
 makeMain = defineNewFunction "main" ("argc" :* "argv" :* ())
-
--- | Function to function pointer.
-funPtr :: b :-> as -> RValue (b :-> as)
-funPtr (Function name) = RValue name
-
--- | Function pointer to function.
-fun :: ToRValue t => t (b :-> as) -> b :-> as
-fun x = Function $ unRValue x
-
-{-
-newGlobal :: Type a => Name a -> TopDecl (LValue a)
-newGlobal n@(Name name) = do
-  tell $ typeOf n <+> name ++ ";\n"
-  return $ LValue name
-
-mkMain :: Statement () -> TopDecl ()
-mkMain stmts = tell $ unlines
-  [ "int main(int argc, char **argv) {"
-  , indent $ execWriter $ stmts >> creturn (0 :: RValue Int)
-  , "}"
-  ]
-
-printInt :: RValue Int -> Statement ()
-printInt (RValue n) = tell $ "printf(\"%d\", " ++ n ++ ");\n"
-
-cputChar :: RValue Int -> Statement ()
-cputChar (RValue n) = tell $ "putchar(" ++ n ++ ");\n"
-
-funCall :: (Type a, Type b) => Function [b] a -> [RValue b] -> RValue a
-funCall (Function name) args = RValue $ name
-  ++ "(" ++ concat (intersperse ", " $ map unRValue args) ++ ")"
-
-castFunCall :: forall a b c. (Type b, Type c) => RValue a -> [RValue b] -> RValue c
-castFunCall (RValue f) args = funCall (Function f') args
-  where f' = "((" ++ typeOf (undefined :: c) ++ "(*)" ++
-                "(" ++ concat (intersperse ", " $ map typeOf args) ++ ")"
-            ++ ")" ++ f ++ ")"
-
-malloc :: forall a. Type a => RValue (Ptr a)
-malloc = RValue $ "malloc(" ++ sizeof (undefined :: a) ++ ")"
-
-arrayMalloc :: forall a. Type a => Int -> RValue (Ptr a)
-arrayMalloc n = RValue $ "malloc(" ++ sizeof (undefined :: a) <+> "*" <+> show n ++ ")"
-gcMalloc :: forall a. Type a => RValue (Ptr a)
-gcMalloc = RValue $ "GC_MALLOC(" ++ sizeof (undefined :: a) ++ ")"
-
-
-gcArrayMalloc :: forall a. Type a => Int -> RValue (Ptr a)
-gcArrayMalloc n = RValue $ "GC_MALLOC(" ++ sizeof (undefined :: a) <+> "*" <+> show n ++ ")"
-
-arrayIndex :: LValue (Ptr a) -> Int -> LValue a
-arrayIndex (LValue x) n = LValue (x ++ "[" ++ show n ++ "]")
-
-arrayIndexR :: RValue (Ptr a) -> Int -> RValue a
-arrayIndexR (RValue x) n = RValue (x ++ "[" ++ show n ++ "]")
-
-castFun :: forall a b c. Type c => Function [b] a -> RValue c
-castFun (Function f) = RValue $ "(" ++ typeOf (undefined :: c) ++ ")(" ++ f ++ ")"
-
-switch :: RValue Int -> [(Int, Statement ())] -> Statement () -> Statement ()
-switch (RValue x) cases defcase = do
-  tell $ "switch(" ++ x ++ ") "
-  scope $ do
-    forM_ cases $ \ (i, stmt) -> do
-      tell $ "case" <+> show i ++ ": "
-      scope stmt
-    tell $ "default: "
-    scope defcase
-    -}
-
-{-
-data Constant a = (Num a, NumType a) => Constant a
-instance Show a => Show (Constant a) where
-  show (Constant x) = "Constant" <+> show x
-instance Eq a => Eq (Constant a) where
-  Constant x == Constant y = x == y
-instance (NumType a, Num a) => Num (Constant a) where
-  Constant x + Constant y = Constant $ x + y
-  Constant x * Constant y = Constant $ x * y
-  Constant x - Constant y = Constant $ x - y
-  abs (Constant x)        = Constant $ abs x
-  signum (Constant x)     = Constant $ signum x
-  fromInteger i           = Constant $ fromInteger i
-instance ToRValue Constant where
-  rvalue (Constant x) = lit x
--}

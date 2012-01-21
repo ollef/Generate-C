@@ -3,6 +3,7 @@ module Test where
 
 import CGen
 import TypeLists
+import Stdlib
 
 test :: Int :* Int :* () :-> Int
 test = Function "test"

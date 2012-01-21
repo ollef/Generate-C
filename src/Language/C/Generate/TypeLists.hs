@@ -1,6 +1,6 @@
-{-# LANGUAGE FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, TypeFamilies, TypeOperators #-}
--- | Typed lists
-module TypeLists where
+{-# LANGUAGE TypeFamilies, TypeOperators #-}
+-- | Typed lists.
+module Language.C.Generate.TypeLists where
 
 data a :* b = a :* b deriving (Eq, Ord, Show)
 infixr 3 :*
