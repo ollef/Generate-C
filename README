@@ -1,0 +1,35 @@
+Generate-C
+
+Embedded C-code generation DSL. The intention of this package is to provide a
+reasonably typesafe way to generate C code from within Haskell. It uses
+Haskell's type inference so that you do not always have to provide explicit
+types for your C code and also makes sure that the programs generated are type
+correct.  The package does not support the full C language. If you feel that
+something is missing, please send a patch or ask me nicely.
+
+Author: Olle Fredriksson
+
+* Building
+
+  Use Cabal. Example:
+
+    > cabal install
+
+* Documentation
+
+  To generate the documentation for the different modules, use Cabal:
+
+    > cabal configure
+    > cabal haddock
+
+* Examples
+
+  See the examples directory.
+
+* Bugs
+
+  If you find a bug, please send a bug report to fredriksson.olle@gmail.com.
+
+* License
+
+  Refer to the LICENSE file in this directory.
