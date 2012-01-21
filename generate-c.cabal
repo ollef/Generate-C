@@ -20,9 +20,10 @@ Extra-source-files: README
                   -- examples/...
 Cabal-version: >= 1.6
 Library
-    Build-depends:   base == 4.3.*
+    Build-depends:   base < 6
+                   , transformers == 0.2.*
     Exposed-modules: Language.C.Generate
                    , Language.C.Generate.Stdlib
     Other-modules:   Language.C.Generate.Generate
                      Language.C.Generate.TypeLists
-    GHC-Options: -Wall
+    GHC-Options:     -Wall
