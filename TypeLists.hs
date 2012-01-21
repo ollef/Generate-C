@@ -3,7 +3,7 @@
 module TypeLists where
 
 data a :* b = a :* b deriving (Eq, Ord, Show)
-infixr 4 :*
+infixr 3 :*
 
 class TypeList a where
 instance TypeList ()
