@@ -173,15 +173,34 @@ double = lit
 char :: Char -> RValue Char
 char = lit
 
+boolbinop :: (Type a, ToRValue t, ToRValue t')
+          => String -> t a -> t' a -> RValue Int
+boolbinop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
+
 -- | Equality.
 (==.) :: (Type a, ToRValue t, ToRValue t')
       => t a -> t' a -> RValue Int
-a ==. b = RValue $ parens $ unRValue a <+> "==" <+> unRValue b
-
+(==.) = boolbinop "=="
 -- | Inequality.
 (/=.) :: (Type a, ToRValue t, ToRValue t')
       => t a -> t' a -> RValue Int
-a /=. b = RValue $ parens $ unRValue a <+> "!=" <+> unRValue b
+(/=.) = boolbinop "!="
+-- | Less than.
+(<.) :: (Type a, ToRValue t, ToRValue t')
+      => t a -> t' a -> RValue Int
+(<.) = boolbinop "<"
+-- | Greater than.
+(>.) :: (Type a, ToRValue t, ToRValue t')
+      => t a -> t' a -> RValue Int
+(>.) = boolbinop ">"
+-- | Less than or equal.
+(<=.) :: (Type a, ToRValue t, ToRValue t')
+      => t a -> t' a -> RValue Int
+(<=.) = boolbinop "<="
+-- | Greater than or equal.
+(>=.) :: (Type a, ToRValue t, ToRValue t')
+      => t a -> t' a -> RValue Int
+(>=.) = boolbinop ">="
 
 binop :: (Type a, ToRValue t, ToRValue t')
       => String -> t a -> t' a -> RValue a
@@ -255,7 +274,7 @@ newvar name = do
 LValue var =: val = emitLn $ var <+> "=" <+> unRValue val ++ ";"
 
 ------------------------------------------------------------------------------
--- ** If statements
+-- ** Conditional statements
 -- | If statement with an optional else branch.
 iftme :: ToRValue t
       => t Int             -- ^ Predicate
@@ -284,23 +303,6 @@ iff :: ToRValue t
     -> Stmt r ()
 iff p t = iftme p t Nothing
 
-------------------------------------------------------------------------------
--- ** Loops
--- | While loops.
-while :: ToRValue t
-      => t Int     -- ^ Predicate
-      -> Stmt r () -- ^ Loop body
-      -> Stmt r ()
-while p s = do
-  emitLn $ "while" <+> parens (unRValue p)
-  braces s
-
-cbreak :: Stmt r ()
-cbreak = emitLn "break;"
-
-continue :: Stmt r ()
-continue = emitLn "continue;"
-
 -- | Switch statements.
 switch :: ToRValue t
        => t Int              -- ^ Value to switch on
@@ -315,6 +317,31 @@ switch val cases def = do
       braces st
     emitLn $ "default: "
     braces def
+
+------------------------------------------------------------------------------
+-- ** Loops
+-- | While loops.
+while :: ToRValue t
+      => t Int     -- ^ Predicate
+      -> Stmt r () -- ^ Loop body
+      -> Stmt r ()
+while p s = do
+  emitLn $ "while" <+> parens (unRValue p)
+  braces s
+
+-- | For loops.
+for :: ToRValue t
+    => t Int
+    -> t Int
+    -> 
+
+-- | Break.
+cbreak :: Stmt r ()
+cbreak = emitLn "break;"
+
+-- | Continue.
+continue :: Stmt r ()
+continue = emitLn "continue;"
 
 ------------------------------------------------------------------------------
 -- * (Top-level) Declarations
