@@ -64,10 +64,8 @@ class Generate a where
   -- | Generate C code from something. Using it for anything other than 'Decl'
   -- is mostly useful for debugging purposes (or for use with 'trustMe').
   generate :: a -> String
-instance Generate (RValue a) where
-  generate = unRValue
-instance Generate (LValue a) where
-  generate = unRValue
+instance Generate (Val lr a) where
+  generate = unVal
 instance Generate (Stmt r a) where
   generate = snd . runEmit
 instance Generate (Decl a) where
@@ -78,26 +76,22 @@ instance Generate (Decl a) where
 -------------------------------------------------------------------------------
 -- | C values.
 newtype Val lr a = Val {unVal :: String} deriving Show
--- | Values that can be used on the left-hand side of assignments.
-data L
--- | Values that can't be assigned
-data R
 
-{-
-class ToRValue t where
-  -- | Conversion to 'RValue's.
-  rvalue :: t a -> RValue a
-instance ToRValue RValue where rvalue = id
-instance ToRValue LValue where rvalue (LValue x) = RValue x
-unRValue :: ToRValue t => t a -> String
-unRValue x = case rvalue x of
-  RValue s -> s
--}
+-- | Left or right
+data L
+data R
+-- | Values that can be used on the left-hand side of assignments.
+type LVal a = Val L a
+-- | Values that can't be assigned
+type RVal a = Val R a
+-- | Convert LVal to RVal
+rval :: LVal a -> RVal a
+rval (Val x) = Val x
 
 -- | Pointer type.
 data Ptr a
 -- | Function type.
-newtype Fun t = Fun {unFunction :: String}
+newtype Fun t = Fun {unFun :: String}
 
 -- | Give the type of something.
 --   Invariant: The argument is not inspected.
@@ -118,11 +112,11 @@ instance Type Double where
   typeOf _ v = "double" <+> v
 instance Type a => Type (Ptr a) where
   typeOf _ v = typeOf (undefined :: a) "" ++ "*" <+> v
-instance Type a => Type (Val a) where
+instance Type a => Type (Val lr a) where
   typeOf _ = typeOf (undefined :: a)
 instance FunType a => Type (Fun a) where
   typeOf _ v = res "" <+> parens ("*" ++ v) ++ tuple (map ($ "") params)
-    where (params, res) = functionTypeView (undefined :: a)
+    where (params, res) = funTypeView (undefined :: a)
 
 -- | Get a list of type functions from a function type
 class FunType a where
@@ -151,53 +145,52 @@ instance FunType a => InhabitedType (Fun a) where
 -- Expressions
 ------------------------------------------------------------------------------
 -- | Size of a datatype.
-sizeof :: Type t => t -> RValue Int
-sizeof x = RValue $ "sizeof" ++ parens (typeOf x "")
+sizeof :: Type t => t -> RVal Int
+sizeof x = Val $ "sizeof" ++ parens (typeOf x "")
 
 -- | Conditional (@predicate ? true : false@).
-cond :: (Type a, ToRValue t, ToRValue t', ToRValue t'')
-     => t Int    -- ^ Predicate
-     -> t' a     -- ^ True expression
-     -> t'' a    -- ^ False expression
-     -> RValue a
-cond p t f = RValue $ parens
-           $ unRValue p <+> "?" <+> unRValue t <+> ":" <+> unRValue f
+cond :: Type a
+     => Val lr   Int -- ^ Predicate
+     -> Val lr'  a   -- ^ True expression
+     -> Val lr'' a   -- ^ False expression
+     -> RVal a
+cond p t f = Val $ parens
+           $ unVal p <+> "?" <+> unVal t <+> ":" <+> unVal f
 
 -------------------------------------------------------------------------------
 -- Pointers
 -- | Get the address of a value.
-address :: ToRValue t => t a -> LValue (Ptr a)
-address x = LValue $ parens $ "&" ++ unRValue x
+address :: Val lr a -> RVal (Ptr a)
+address x = Val $ parens $ "&" ++ unVal x
 
 -- | Dereference a pointer.
-deref :: (InhabitedType a, ToRValue t) => t (Ptr a) -> LValue a
-deref x = LValue $ parens $ "*" ++ unRValue x
+deref :: InhabitedType a => Val lr (Ptr a) -> LVal a
+deref x = Val $ parens $ "*" ++ unVal x
 
 -- | Function to function pointer.
-funPtr :: Function a -> RValue (Function a)
-funPtr (Function name) = RValue name
+funPtr :: Fun a -> RVal (Fun a)
+funPtr (Fun name) = Val name
 
 -- | Function pointer to function.
-fun :: ToRValue t => t (Function a) -> Function a
-fun x = Function $ unRValue x
+fun :: Val lr (Fun a) -> Fun a
+fun x = Fun $ unVal x
 
 -- | Null pointer.
-nullPtr :: RValue (Ptr a)
-nullPtr = RValue "0"
+nullPtr :: LVal (Ptr a)
+nullPtr = Val "0"
 
 -- | Array indexing.
-(!) :: (ToRValue t, ToRValue t')
-    => t (Ptr a) -> t' Int -> LValue a
-arr ! i = LValue $ unRValue arr ++ brackets (unRValue i)
+(!) :: Val lr (Ptr a) -> Val lr' Int -> LVal a
+arr ! i = Val $ unVal arr ++ brackets (unVal i)
 
 -------------------------------------------------------------------------------
 -- Type casting
 -- | Type cast.
-cast :: forall t a b. (Type b, ToRValue t) => t a -> RValue b
-cast x = RValue $ parens $ parens (typeOf (undefined :: b) "") ++ (unRValue x)
+cast :: forall lr a b. Type b => Val lr a -> Val lr b
+cast x = Val $ parens $ parens (typeOf (undefined :: b) "") ++ (unVal x)
 
 -- | Type cast a function.
-castFun :: (FunctionType a, FunctionType b) => Function a -> Function b
+castFun :: (FunType a, FunType b) => Fun a -> Fun b
 castFun = fun . cast . funPtr
 
 -------------------------------------------------------------------------------
@@ -206,69 +199,65 @@ castFun = fun . cast . funPtr
 --   constant literals of.
 class InhabitedType a => NumType a where
   -- | Create a C literal from a Haskell value.
-  lit :: a -> RValue a
+  lit :: a -> RVal a
 instance NumType Int where
-  lit = RValue . show
+  lit = Val . show
 instance NumType Float where
-  lit f = RValue $ show f ++ "f"
+  lit f = Val $ show f ++ "f"
 instance NumType Double where
-  lit = RValue . show
+  lit = Val . show
 instance NumType Char where
-  lit = RValue . show
+  lit = Val . show
 
 -- | Int literal.
-int :: Int -> RValue Int
+int :: Int -> RVal Int
 int = lit
 -- | Float literal.
-float :: Float -> RValue Float
+float :: Float -> RVal Float
 float = lit
 -- | Double literal.
-double :: Double -> RValue Double
+double :: Double -> RVal Double
 double = lit
 -- | Char literal.
-char :: Char -> RValue Char
+char :: Char -> RVal Char
 char = lit
 -- | Bool literal.
-bool :: Bool -> RValue Int
+bool :: Bool -> RVal Int
 bool False = lit 0
 bool True  = lit 1
 
-boolbinop :: (Type a, ToRValue t, ToRValue t')
-          => String -> t a -> t' a -> RValue Int
-boolbinop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
+boolbinop :: Type a => String -> Val lr a -> Val lr' a -> RVal Int
+boolbinop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 
 (==), (/=)
-  :: (Type a, ToRValue t, ToRValue t')
-  => t a -> t' a -> RValue Int
+  :: Type a
+  => Val lr a -> Val lr' a -> RVal Int
 (==) = boolbinop "=="
 (/=) = boolbinop "!="
 
 (<), (>), (<=), (>=)
-  :: (NumType a, ToRValue t, ToRValue t')
-  => t a -> t' a -> RValue Int
+  :: NumType a
+  => Val lr a -> Val lr' a -> RVal Int
 (<) = boolbinop "<"
 (>) = boolbinop ">"
 (<=) = boolbinop "<="
 (>=) = boolbinop ">="
 
 (&&), (||)
-  :: (ToRValue t, ToRValue t')
-  => t Int -> t' Int -> RValue Int
+  :: Val lr Int -> Val lr' Int -> RVal Int
 (&&) = boolbinop "&&"
 (||) = boolbinop "||"
 
 -- | Logical negation (@!x@).
-not :: ToRValue t
-    => t Int -> RValue Int
-not x = RValue $ parens $ "!" ++ unRValue x
+not :: Val lr Int -> RVal Int
+not x = Val $ parens $ "!" ++ unVal x
 
-binop :: (Type a, ToRValue t, ToRValue t')
-      => String -> t a -> t' a -> RValue a
-binop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
+binop :: Type a => String -> Val lr a -> Val lr' a -> RVal a
+binop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 
 (+), (-), (*), (/)
-  :: (NumType a, ToRValue t, ToRValue t')
-  => t a -> t' a -> RValue a
+  :: NumType a
+  => Val lr a -> Val lr' a -> RVal a
 (+) = binop "+"
 (-) = binop "-"
 (*) = binop "*"
@@ -277,29 +266,28 @@ binop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
 ------------------------------------------------------------------------------
 -- Function calls
 -- | Get a Haskell function taking the arguments from a C function's type
-class FunctionArgs funtype restype | funtype -> restype where
-  functionArgs :: Function a -> [String]
+class FunArgs funtype restype | funtype -> restype where
+  functionArgs :: Fun a -> [String]
                -> funtype -> restype
-instance FunctionArgs (IO a) (RValue a) where
-  functionArgs (Function f) args _ = RValue $ f ++ tuple (reverse args)
-instance (FunctionArgs b b', ToRValue t)
-      => FunctionArgs (a -> b) (t a -> b') where
+instance FunArgs (IO a) (Val R a) where
+  functionArgs (Fun f) args _ = Val $ f ++ tuple (reverse args)
+instance FunArgs b b' => FunArgs (a -> b) (Val lr a -> b') where
   functionArgs f args _ = \val ->
-    (functionArgs f (unRValue val : args) (undefined :: b) :: b')
+    (functionArgs f (unVal val : args) (undefined :: b) :: b')
 
 -- | Function calls
-call :: forall f res. FunctionArgs f res
-     => Function f -- ^ Function
+call :: forall f res. FunArgs f res
+     => Fun f -- ^ Fun
      -> res        -- ^ Arguments and result
 call f = functionArgs f [] (undefined :: f)
 
 ------------------------------------------------------------------------------
 -- Untrusted code
--- | \"Trust me, I know what I'm doing\". Insert whatever code you want as an
---   'LValue' at any type.
+-- | \"Trust me, I know what I'm doing\". Insert whatever code you want as a 
+--   value at any type.
 trustMe :: String   -- ^ C code
-        -> LValue a
-trustMe = LValue
+        -> Val lr a
+trustMe = Val
 
 ------------------------------------------------------------------------------
 -- Statements
@@ -313,8 +301,8 @@ instance MonadEmit (Stmt r) where
   emit    = Stmt . tell
 
 -- | Statement from a value.
-stmt :: ToRValue t => t a -> Stmt r ()
-stmt x = emitLn $ unRValue x ++ ";"
+stmt :: Val lr a -> Stmt r ()
+stmt x = emitLn $ unVal x ++ ";"
 
 ------------------------------------------------------------------------------
 -- Return statements
@@ -323,8 +311,8 @@ ret_ :: Stmt () ()
 ret_ = emitLn "return;"
 
 -- | Return a value.
-ret :: (InhabitedType a, ToRValue t) => t a -> Stmt a ()
-ret x = emitLn $ "return" <+> unRValue x ++ ";"
+ret :: InhabitedType a => Val lr a -> Stmt a ()
+ret x = emitLn $ "return" <+> unVal x ++ ";"
 
 ------------------------------------------------------------------------------
 -- | Scopes
@@ -334,67 +322,62 @@ scope = braces
 ------------------------------------------------------------------------------
 -- Variables
 -- | Create a variable with an initial value.
-(=.) :: forall t a r. (InhabitedType a, ToRValue t)
-     => String            -- ^ Variable name
-     -> t a               -- ^ Initial value
-     -> Stmt r (LValue a) -- ^ Variable
+(=.) :: forall lr a r. InhabitedType a
+     => String          -- ^ Variable name
+     -> Val lr a        -- ^ Initial value
+     -> Stmt r (LVal a) -- ^ Variable
 name =. val = do
-  emitLn $ typeOf (undefined :: a) name <+> "=" <+> unRValue val ++ ";"
-  return $ LValue name
+  emitLn $ typeOf (undefined :: a) name <+> "=" <+> unVal val ++ ";"
+  return $ Val name
 
 -- | Create a variable with no initial value.
 newvar :: forall a r. InhabitedType a
     => String            -- ^ Variable name
-    -> Stmt r (LValue a) -- ^ Variable
+    -> Stmt r (LVal a) -- ^ Variable
 newvar name = do
   emitLn $ typeOf (undefined :: a) name ++ ";"
-  return $ LValue name
+  return $ Val name
 
 -- | Variable assignment.
-(=:) :: (ToRValue t)
-     => LValue a -- ^ Variable
-     -> t a      -- ^ Value
+(=:) :: LVal a    -- ^ Variable
+     -> Val lr a  -- ^ Value
      -> Stmt r ()
-LValue var =: val = emitLn $ var <+> "=" <+> unRValue val ++ ";"
+Val var =: val = emitLn $ var <+> "=" <+> unVal val ++ ";"
 
 ------------------------------------------------------------------------------
 -- Conditional statements
 -- | If statement with an optional else branch.
-iftme :: ToRValue t
-      => t Int             -- ^ Predicate
+iftme :: Val lr Int        -- ^ Predicate
       -> Stmt r ()         -- ^ \"Then\" branch
       -> Maybe (Stmt r ()) -- ^ Optional \"Else\" branch
       -> Stmt r ()
 iftme p t mf = do
-  emit $ "if" <+> parens (unRValue p) ++ " "
+  emit $ "if" <+> parens (unVal p) ++ " "
   braces t
   case mf of
     Nothing -> return ()
     Just f  -> do emit $ "else "; braces f
 
 -- | If statement with an else branch.
-ifte :: ToRValue t
-     => t Int     -- ^ Predicate
-     -> Stmt r () -- ^ \"Then\" branch
-     -> Stmt r () -- ^ \"Else\" branch
+ifte :: Val lr Int -- ^ Predicate
+     -> Stmt r ()  -- ^ \"Then\" branch
+     -> Stmt r ()  -- ^ \"Else\" branch
      -> Stmt r ()
 ifte p t f = iftme p t (Just f)
 
 -- | If and only if (no else branch).
-iff :: ToRValue t
-    => t Int     -- ^ Predicate
-    -> Stmt r () -- ^ \"Then\" branch
+iff :: Val lr Int -- ^ Predicate
+    -> Stmt r ()  -- ^ \"Then\" branch
     -> Stmt r ()
 iff p t = iftme p t Nothing
 
 -- | Switch statements.
-switch :: ToRValue t
-       => t Int              -- ^ Value to switch on
+switch :: Val lr Int         -- ^ Value to switch on
        -> [(Int, Stmt r ())] -- ^ Cases
        -> Stmt r ()          -- ^ Default case
        -> Stmt r ()
 switch val cases def = do
-  emit $ "switch" ++ parens (unRValue val) ++ " "
+  emit $ "switch" ++ parens (unVal val) ++ " "
   braces $ do
     forM_ cases $ \(i, st) -> do
       emit $ "case" <+> show i ++ ": "
@@ -405,38 +388,36 @@ switch val cases def = do
 ------------------------------------------------------------------------------
 -- Loops
 -- | While loops.
-while :: ToRValue t
-      => t Int     -- ^ Predicate
-      -> Stmt r () -- ^ Loop body
+while :: Val lr Int -- ^ Predicate
+      -> Stmt r ()  -- ^ Loop body
       -> Stmt r ()
 while p s = do
-  emit $ "while" <+> parens (unRValue p) ++ " "
+  emit $ "while" <+> parens (unVal p) ++ " "
   braces s
 
 -- | For loops (currently desugared to while loops because C's for loops don't
 --   fit the model of how expressions contra statements work in this DSL).
-for :: ToRValue t
-    => Stmt r () -- ^ Initialise
-    -> t Int     -- ^ Predicate
-    -> Stmt r () -- ^ Increase
-    -> Stmt r () -- ^ Loop body
+for :: Stmt r ()  -- ^ Initialise
+    -> Val lr Int -- ^ Predicate
+    -> Stmt r ()  -- ^ Increase
+    -> Stmt r ()  -- ^ Loop body
     -> Stmt r ()
 for i p inc s = do
   i
   while p (do s; inc)
 
 -- | Loop between a start and an end value increasing by a step value.
-forFromTo :: (Num n, NumType n, ToRValue t, ToRValue t', ToRValue t'')
-          => String -- ^ Name of the loop variable
-          -> t   n  -- ^ Start
-          -> t'  n  -- ^ Step
-          -> t'' n  -- ^ End
-          -> (RValue n -> Stmt r ()) -- ^ Loop body
+forFromTo :: (Num n, NumType n)
+          => String                -- ^ Name of the loop variable
+          -> Val lr   n            -- ^ Start
+          -> Val lr'  n            -- ^ Step
+          -> Val lr'' n            -- ^ End
+          -> (RVal n -> Stmt r ()) -- ^ Loop body
           -> Stmt r ()
 forFromTo v start step end body = braces $ do
   i <- v =. start
   while (i < end) $ do
-    body (rvalue i)
+    body (rval i)
     i =: i + step
 
 -- | Break.
@@ -468,88 +449,87 @@ include file = emitLn $ "#include" <+> file
 -- Global variables
 declareGlobal :: forall a. InhabitedType a
               => String          -- ^ Global name
-              -> Decl (LValue a) -- ^ Global variable
+              -> Decl (LVal a) -- ^ Global variable
 declareGlobal name = do
   emitLn (typeOf (undefined :: a) name)
-  return $ LValue name
+  return $ Val name
 
 ------------------------------------------------------------------------------
 -- Functions
 -- | Forward declaration of a function.
-declareFunction :: forall f.
-  ( FunctionType f
-  ) => String            -- ^ Function name
-    -> Decl (Function f) -- ^ Resulting function declaration
-declareFunction name = do
+declareFun :: forall f.
+  ( FunType f
+  ) => String       -- ^ Function name
+    -> Decl (Fun f) -- ^ Resulting function declaration
+declareFun name = do
   emitLn $ res "" <+> name
         ++ tuple (map ($ "") params) ++ ";"
-  return $ Function name
-  where (params, res) = functionTypeView (undefined :: f)
+  return $ Fun name
+  where (params, res) = funTypeView (undefined :: f)
 
 -- | Get a list of parameter names of a C function.
-class FunctionType funtype => FunctionParams names funtype where
-  functionParams :: names -> funtype -> [String]
-instance Type a => FunctionParams () (IO a) where
-  functionParams () _ = []
-instance (InhabitedType a, FunctionParams names b)
-      => FunctionParams (String :> names) (a -> b) where
-  functionParams (n :> ns) _ = n : functionParams ns (undefined :: b)
+class FunType funtype => FunParams names funtype where
+  funParams :: names -> funtype -> [String]
+instance Type a => FunParams () (IO a) where
+  funParams () _ = []
+instance (InhabitedType a, FunParams names b)
+      => FunParams (String :> names) (a -> b) where
+  funParams (n :> ns) _ = n : funParams ns (undefined :: b)
 
 -- | Get the Haskell function that can be used for defining the body of the
 --   C function.
-class FunctionDef params fun def res where
-  functionDef :: params -> String -> String
-              -> fun -> def -> Decl (Function res)
-instance FunctionDef () (IO a) (Stmt a ()) res where
-  functionDef () f defline _ body = do
+class FunDef params fun def res | params fun res -> def where
+  funDef :: params -> String -> String -> fun -> def -> Decl (Fun res)
+instance FunDef () (IO a) (Stmt a ()) res where
+  funDef () f defline _ body = do
     emit defline
     braces $
       emit $ snd . runEmit $ body
-    return $ Function f
-instance FunctionDef params b def res
-      => FunctionDef (String :> params) (a -> b) (LValue a -> def) res where
-  functionDef (param :> ps) f defline _ bodyf =
-    functionDef ps f defline (undefined :: b) (bodyf $ LValue param)
+    return $ Fun f
+instance FunDef params b def res
+      => FunDef (String :> params) (a -> b) (LVal a -> def) res where
+  funDef (param :> ps) f defline _ bodyf =
+    funDef ps f defline (undefined :: b) (bodyf $ Val param)
 
 -- | Define a function that has not been declared before.
-defineNewFunction :: forall f def names.
-  ( FunctionDef names f def f
-  , FunctionParams names f
-  ) => String              -- ^ Function name
-    -> names               -- ^ Parameter names
-    -> (Function f -> def) -- ^ Function from input to function body;
-                           --   the function can be used recursively
-    -> Decl (Function f)
-defineNewFunction name params bodyf =
-  functionDef params name defline (undefined :: f) (bodyf $ Function name)
-  where paramNames          = functionParams params (undefined :: f)
-        (inptypes, restype) = functionTypeView (undefined :: f)
+defineNewFun :: forall f def names.
+  ( FunDef names f def f
+  , FunParams names f
+  ) => String         -- ^ Function name
+    -> names          -- ^ Parameter names
+    -> (Fun f -> def) -- ^ Function from input to function body;
+                      --   the function can be used recursively
+    -> Decl (Fun f)
+defineNewFun name params bodyf =
+  funDef params name defline (undefined :: f) (bodyf $ Fun name)
+  where paramNames          = funParams params (undefined :: f)
+        (inptypes, restype) = funTypeView (undefined :: f)
         defline    = restype "" <+> name ++ tuple (zipWith ($) inptypes
                                                                paramNames)
 
 -- | Define a function that has been declared before.
-defineFunction :: forall def names f.
-  ( FunctionDef names f def f
-  , FunctionParams names f
-  ) => Function f -- ^ Declared function
-    -> names      -- ^ Parameter names
-    -> def        -- ^ Function from input to function body
-    -> Decl ()    -- ^ Does not return a new function (use the declared one)
-defineFunction (Function name) params bodyf = do
-  _ <- defineNewFunction name params (const bodyf) :: Decl (Function f)
+defineFun :: forall def names f.
+  ( FunDef names f def f
+  , FunParams names f
+  ) => Fun f   -- ^ Declared function
+    -> names   -- ^ Parameter names
+    -> def     -- ^ Function from input to function body
+    -> Decl () -- ^ Does not return a new function (use the declared one)
+defineFun (Fun name) params bodyf = do
+  _ <- defineNewFun name params (const bodyf) :: Decl (Fun f)
   return ()
 
 ------------------------------------------------------------------------------
 -- Main
 -- | The type of the main function (@int main(int argc, int** argv)@).
-type MainType = Function (Int -> Ptr (Ptr Int) -> IO Int)
+type MainType = Fun (Int -> Ptr (Ptr Int) -> IO Int)
 
 -- | Create a function called main with parameters @argc@ and @argv@.
-makeMain :: (MainType -> LValue Int
-                      -> LValue (Ptr (Ptr Int))
+makeMain :: (MainType -> LVal Int
+                      -> LVal (Ptr (Ptr Int))
                       -> Stmt Int ()) -- ^ @main -> argc -> argv -> Body@
          -> Decl MainType
-makeMain = defineNewFunction "main" ("argc" |> "argv")
+makeMain = defineNewFun "main" ("argc" |> "argv")
 
 ------------------------------------------------------------------------------
 -- Comments

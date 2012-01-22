@@ -13,26 +13,25 @@ import Language.C.Generate as C
 includeStdlib :: Decl ()
 includeStdlib = include "<stdlib.h>"
 
-mallocFun :: Function (Int -> IO (Ptr ()))
+mallocFun :: Fun (Int -> IO (Ptr ()))
 mallocFun = fun $ trustMe "malloc"
 
-freeFun :: Function (Ptr () -> IO ())
+freeFun :: Fun (Ptr () -> IO ())
 freeFun = fun $ trustMe "free"
 
 -- | Allocate memory (@sizeof(type)@).
-malloc :: forall a. Type a
-       => RValue (Ptr a)
-malloc = cast (call mallocFun $ sizeof (undefined :: a) :: RValue (Ptr ()))
+malloc :: forall a. Type a => RVal (Ptr a)
+malloc = cast $ call mallocFun $ sizeof (undefined :: a)
 
 -- | Allocate an array (@sizeof(type) * size@).
-arrayMalloc :: forall a t. (Type a, ToRValue t)
-            => t Int          -- ^ Size
-            -> RValue (Ptr a) -- ^ Pointer to the array
+arrayMalloc :: forall lr a. Type a
+            => Val lr Int     -- ^ Size
+            -> RVal (Ptr a) -- ^ Pointer to the array
 arrayMalloc size =
-  cast (call mallocFun $ sizeof (undefined :: a) C.* size :: RValue (Ptr ()))
+  cast $ call mallocFun $ sizeof (undefined :: a) C.* size
 
 -- | Free memory.
-free :: forall a t. (Type a, ToRValue t)
-     => t (Ptr a) -- ^ Pointer to the memory location to free
-     -> RValue ()
-free ptr = call freeFun $ (cast ptr :: RValue (Ptr ()))
+free :: forall a lr. Type a
+     => Val lr (Ptr a) -- ^ Pointer to the memory location to free
+     -> RVal ()
+free ptr = call freeFun $ cast ptr

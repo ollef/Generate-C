@@ -2,32 +2,23 @@
 import Language.C.Generate as C
 import Language.C.Generate.Stdlib
 
-printint :: Generate (t Int) => t Int -> Stmt r ()
-printint n = stmt $ rvalue $ trustMe
+printint :: Val lr Int -> Stmt r ()
+printint n = stmt $ trustMe
            $ "printf(\"%d\\n\", " ++ generate n ++ ")"
-
-cprintArr :: LValue (Ptr Int) -> LValue Int -> Stmt () ()
-cprintArr arr len = do
-  forFromTo "i" (lit 0) (lit 1) len $ \i ->
-    printint $ arr ! i
-
-cmap :: LValue (Function (Int -> IO Int)) -> LValue (Ptr Int) -> LValue Int -> Stmt () ()
-cmap f xs len = do
-    forFromTo "i" (lit 0) (lit 1) len $ \i -> do
-      xs ! i =: call (fun f) (xs ! i)
 
 program = do
   include "<stdio.h>"
   includeStdlib
   commentDecl "Forward declarations!"
-  map :: Function (Function (Int -> IO Int) -> Ptr Int -> Int -> IO ())
-      <- declareFunction "map"
-  add5 :: Function (Int -> IO Int)
-      <- declareFunction "add5"
+  map :: Fun (Fun (Int -> IO Int) -> Ptr Int -> Int -> IO ())
+      <- declareFun "map"
+  add5 :: Fun (Int -> IO Int)
+      <- declareFun "add5"
 
-  printArr :: Function (Ptr Int -> Int -> IO ())
-           <- defineNewFunction "printArr" ("arr" |> "len") $
-                                \rec -> cprintArr
+  printArr :: Fun (Ptr Int -> Int -> IO ())
+           <- defineNewFun "printArr" ("arr" |> "len") $ \_ arr len -> do
+    forFromTo "i" (lit 0) (lit 1) len $ \i ->
+      printint $ arr ! i
 
   commentDecl "Program entry point"
   makeMain $ \main argc argv -> do
@@ -46,10 +37,12 @@ program = do
     stmt $ free arr
     ret $ lit 0
 
-  defineFunction map ("f" :> "xs" |> "len") cmap
+  defineFun map ("f" :> "xs" |> "len") $ \f xs len -> do
+    forFromTo "i" (lit 0) (lit 1) len $ \i -> do
+      xs ! i =: call (fun f) (xs ! i)
 
-  defineFunction add5 ("x" :> ()) $
-                     \  (x :: LValue Int) -> do
+  defineFun add5 ("x" :> ()) $
+                 \x -> do
     ret $ x C.+ lit 5
 
 main = writeFile "Array.c" $ generate program
