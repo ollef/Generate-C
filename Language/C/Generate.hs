@@ -4,11 +4,11 @@ module Language.C.Generate
   -- * Code generation
     Generate, generate
   -- * C types
-  , LValue, RValue, Ptr, (:->), Type, typeOf, ToRValue, rvalue
+  , LValue, RValue, Ptr, Function, Type, typeOf, ToRValue, rvalue
   -- * Expressions
   , sizeof, cond
   -- ** Pointers
-  , address, deref, funPtr, fun, nullPtr, (!.)
+  , address, deref, funPtr, fun, nullPtr, (!)
   -- ** Type casting
   , cast, castFun
   -- ** Literals
@@ -18,25 +18,25 @@ module Language.C.Generate
 
   , int, float, double, char, bool
   -- ** Numeric
-  , (==.), (/=.)
+  , (==), (/=)
     -- | Equality, inequality.
-  , (<.), (>.), (<=.), (>=.)
+  , (<), (>), (<=), (>=)
     -- | Less than, greater than, less than or equal, greater than or equal.
-  , (&&.), (||.)
+  , (&&), (||)
     -- | Logical and, logical or.
 
-  , cnot
-  , (+.), (-.), (*.), (/.)
+  , not
+  , (+), (-), (*), (/)
     -- | Addition, subtraction, multiplication, division.
 
   -- ** Function calls
-  , ($$)
+  , call
   -- ** Untrusted code
   , trustMe
   -- * Statements
   , Stmt, stmt
   -- ** Return statements
-  , retvoid, ret
+  , ret_, ret
   -- ** Scopes
   , scope
   -- ** Variables
@@ -44,7 +44,7 @@ module Language.C.Generate
   -- ** Conditional
   , ifte, iff, switch
   -- ** Loops
-  , while, for, forFromTo, cbreak, continue
+  , while, for, forFromTo, break, continue
   -- * Declarations (top-level)
   , Decl
   -- ** Preprocessor directives
@@ -56,10 +56,10 @@ module Language.C.Generate
   -- ** Main
   , MainType, makeMain
   -- * Typed lists
-  , (:*)(..)
+  , (:>)(..), (|>)
   -- * Comments
   , commentDecl, comment
   ) where
-
+import qualified Prelude
 import Language.C.Generate.Generate
 import Language.C.Generate.TypeLists

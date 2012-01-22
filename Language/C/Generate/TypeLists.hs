@@ -2,15 +2,10 @@
 -- | Heterogeneously typed lists.
 module Language.C.Generate.TypeLists where
 
-data a :* b = a :* b deriving (Eq, Ord, Show)
-infixr 4 :*
+infixr 4 :>, |>
 
-{-
-class TypeList a where
-instance TypeList ()
-instance TypeList as => TypeList (a :* as)
--}
+data a :> b = a :> b deriving (Eq, Ord, Show)
 
-type family   TMap (f :: * -> *) (a :: *)
-type instance TMap f ()        = ()
-type instance TMap f (a :* as) = f a :* TMap f as
+-- | Sugar for not having to write the null element of these lists
+(|>) :: a -> b -> a :> b :> ()
+a |> b = a :> b :> ()

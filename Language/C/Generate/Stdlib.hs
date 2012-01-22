@@ -7,32 +7,32 @@ module Language.C.Generate.Stdlib
   , free
   ) where
 
-import Language.C.Generate
+import Language.C.Generate as C
 
 -- | @#include \<stdlib.h\>@
 includeStdlib :: Decl ()
 includeStdlib = include "<stdlib.h>"
 
-mallocFun :: Int :* () :-> Ptr ()
+mallocFun :: Function (Int -> IO (Ptr ()))
 mallocFun = fun $ trustMe "malloc"
 
-freeFun :: Ptr () :* () :-> ()
+freeFun :: Function (Ptr () -> IO ())
 freeFun = fun $ trustMe "free"
 
 -- | Allocate memory (@sizeof(type)@).
 malloc :: forall a. Type a
        => RValue (Ptr a)
-malloc = cast $ mallocFun $$ sizeof (undefined :: a) :* ()
+malloc = cast (call mallocFun $ sizeof (undefined :: a) :: RValue (Ptr ()))
 
 -- | Allocate an array (@sizeof(type) * size@).
 arrayMalloc :: forall a t. (Type a, ToRValue t)
             => t Int          -- ^ Size
             -> RValue (Ptr a) -- ^ Pointer to the array
 arrayMalloc size =
-  cast $ mallocFun $$ (sizeof (undefined :: a) *. size :*) ()
+  cast (call mallocFun $ sizeof (undefined :: a) C.* size :: RValue (Ptr ()))
 
 -- | Free memory.
 free :: forall a t. (Type a, ToRValue t)
      => t (Ptr a) -- ^ Pointer to the memory location to free
      -> RValue ()
-free ptr = freeFun $$ (cast ptr :: RValue (Ptr ())) :* ()
+free ptr = call freeFun $ (cast ptr :: RValue (Ptr ()))
