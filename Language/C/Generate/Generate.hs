@@ -177,11 +177,11 @@ arr !. i = LValue $ unRValue arr ++ brackets (unRValue i)
 -------------------------------------------------------------------------------
 -- Type casting
 -- | Type cast.
-cast :: ToRValue t => t a -> RValue b
-cast = RValue . unRValue
+cast :: forall t a b. (Type b, ToRValue t) => t a -> RValue b
+cast x = RValue $ parens $ parens (typeOf (undefined :: b) "") ++ (unRValue x)
 
 -- | Type cast a function.
-castFun :: bs :-> a -> bs' :-> a'
+castFun :: (Type a', TypeListTypes bs') => bs :-> a -> bs' :-> a'
 castFun = fun . cast . funPtr
 
 -------------------------------------------------------------------------------
@@ -392,8 +392,8 @@ while p s = do
   emit $ "while" <+> parens (unRValue p) ++ " "
   braces s
 
--- | For loops (currently desugared to while loops because for loops don't fit
---   the model of how expressions contra statements work in this DSL).
+-- | For loops (currently desugared to while loops because C's for loops don't
+--   fit the model of how expressions contra statements work in this DSL).
 for :: ToRValue t
     => Stmt r () -- ^ Initialise
     -> t Int     -- ^ Predicate
@@ -429,6 +429,7 @@ continue = emitLn "continue;"
 ------------------------------------------------------------------------------
 -- Declarations (top-level)
 ------------------------------------------------------------------------------
+-- | A top-level declaration
 newtype Decl a = Decl {unDecl :: Writer String a}
   deriving (Monad)
 instance MonadEmit Decl where
