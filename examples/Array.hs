@@ -10,7 +10,7 @@ printint n = stmt $ trustMe
 program = do
   include "<stdio.h>"
   includeStdlib
-  commentDecl "Forward declarations!"
+  comment "Forward declarations!"
   map :: Fun (Fun (Int -> IO Int) -> Ptr Int -> Int -> IO ())
       <- declareFun "map"
   add5 :: Fun (Int -> IO Int)
@@ -21,7 +21,7 @@ program = do
     forFromTo "i" (lit 0) (lit 1) len $ \i ->
       printint $ arr ! i
 
-  commentDecl "Program entry point"
+  comment "Program entry point"
   makeMain $ \main argc argv -> do
     comment "Create a function pointer"
     f   <- "f" =. funPtr add5

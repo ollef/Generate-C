@@ -58,7 +58,7 @@ module Language.C.Generate
   -- ** Main
   , MainType, makeMain
   -- * Comments
-  , commentDecl, comment
+  , comment
   ) where
 import qualified Prelude
 import Language.C.Generate.Generate

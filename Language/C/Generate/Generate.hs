@@ -560,10 +560,6 @@ makeMain = defineNewFun "main" ("argc" |> "argv")
 ------------------------------------------------------------------------------
 -- Comments
 ------------------------------------------------------------------------------
--- | Top-level comment.
-commentDecl :: String -> Decl ()
-commentDecl s = emitLn $ "/*" <+> s <+> "*/"
-
--- | Comment in a function.
-comment :: String -> Stmt r ()
+-- | Comment (works for 'Decl' and 'Stmt').
+comment :: MonadEmit m => String -> m ()
 comment s = emitLn $ "/*" <+> s <+> "*/"
