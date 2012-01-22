@@ -97,7 +97,7 @@ unRValue x = case rvalue x of
 -- | Pointer type.
 data Ptr a
 -- | Function type.
-newtype Function as = Function {unFunction :: String}
+newtype Fun t = Fun {unFunction :: String}
 
 -- | Give the type of something.
 --   Invariant: The argument is not inspected.
@@ -118,27 +118,25 @@ instance Type Double where
   typeOf _ v = "double" <+> v
 instance Type a => Type (Ptr a) where
   typeOf _ v = typeOf (undefined :: a) "" ++ "*" <+> v
-instance Type a => Type (LValue a) where
+instance Type a => Type (Val a) where
   typeOf _ = typeOf (undefined :: a)
-instance Type a => Type (RValue a) where
-  typeOf _ = typeOf (undefined :: a)
-instance FunctionType a => Type (Function a) where
+instance FunType a => Type (Fun a) where
   typeOf _ v = res "" <+> parens ("*" ++ v) ++ tuple (map ($ "") params)
     where (params, res) = functionTypeView (undefined :: a)
 
 -- | Get a list of type functions from a function type
-class FunctionType a where
-  functionType :: a -> [String -> String]
-instance Type a => FunctionType (IO a) where
-  functionType _ = [typeOf (undefined :: a)]
-instance (InhabitedType a, FunctionType b) => FunctionType (a -> b) where
-  functionType _ = typeOf (undefined :: a) : functionType (undefined :: b)
+class FunType a where
+  funType :: a -> [String -> String]
+instance Type a => FunType (IO a) where
+  funType _ = [typeOf (undefined :: a)]
+instance (InhabitedType a, FunType b) => FunType (a -> b) where
+  funType _ = typeOf (undefined :: a) : funType (undefined :: b)
 
 -- | Get the parameter and return types from a function type list
-functionTypeView :: forall a. FunctionType a
+funTypeView :: forall a. FunType a
                  => a -> ([String -> String], String -> String)
-functionTypeView _ = (init types, last types)
-  where types = functionType (undefined :: a)
+funTypeView _ = (init types, last types)
+  where types = funType (undefined :: a)
 
 -- | The subset of 'Type's which have values.
 class Type a => InhabitedType a where
@@ -147,7 +145,7 @@ instance InhabitedType Char where
 instance InhabitedType Float where
 instance InhabitedType Double where
 instance Type a => InhabitedType (Ptr a) where
-instance FunctionType a => InhabitedType (Function a) where
+instance FunType a => InhabitedType (Fun a) where
 
 ------------------------------------------------------------------------------
 -- Expressions
