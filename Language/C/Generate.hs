@@ -29,13 +29,16 @@ module Language.C.Generate
   , trustMe
   -- * Statements
   , Stmt, stmt
+  -- ** Return statements
   , retvoid, ret
+  -- ** Scopes
+  , scope
   -- ** Variables
   , (=.), newvar, (=:)
   -- ** Conditional
   , ifte, iff, switch
   -- ** Loops
-  , while, for, cbreak, continue
+  , while, for, forFromTo, cbreak, continue
   -- * Declarations (top-level)
   , Decl
   -- ** Preprocessor directives
@@ -48,6 +51,8 @@ module Language.C.Generate
   , MainType, makeMain
   -- * Typed lists
   , (:*)(..)
+  -- * Comments
+  , commentDecl, comment
   ) where
 
 import Language.C.Generate.Generate

@@ -1,7 +1,7 @@
 CC=gcc
 HC=ghc
 
-FILES = Fac.hs
+FILES = Fac.hs Array.hs
 
 all : $(FILES:.hs=.c-run)
 

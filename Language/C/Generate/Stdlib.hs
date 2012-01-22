@@ -25,12 +25,14 @@ malloc :: forall a. Type a
 malloc = cast $ mallocFun $$ sizeof (undefined :: a) :* ()
 
 -- | Allocate an array (@sizeof(type) * size@).
-arrayMalloc :: forall a. Type a
-            => RValue Int     -- ^ Size
+arrayMalloc :: forall a t. (Type a, ToRValue t)
+            => t Int          -- ^ Size
             -> RValue (Ptr a) -- ^ Pointer to the array
-arrayMalloc size = cast $ mallocFun $$
-                            (sizeof (undefined :: a) *. size :*) ()
+arrayMalloc size =
+  cast $ mallocFun $$ (sizeof (undefined :: a) *. size :*) ()
 
 -- | Free memory.
-free :: forall a. Type a => RValue (Ptr a) -> RValue ()
+free :: forall a t. (Type a, ToRValue t)
+     => t (Ptr a) -- ^ Pointer to the memory location to free
+     -> RValue ()
 free ptr = freeFun $$ (cast ptr :: RValue (Ptr ())) :* ()

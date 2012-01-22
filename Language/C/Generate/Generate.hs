@@ -20,11 +20,12 @@ import Language.C.Generate.TypeLists
 infixl 9 !.
 infixl 8 *., /.
 infixl 7 +., -.
-infix  5 ==., /=., <., >., <=., >=.
-infix  4 &&.
-infix  3 ||.
-infix  1 =., =:, :->
-infixr 0 $$
+infix  6 ==., /=., <., >., <=., >=.
+infix  5 &&.
+infix  4 ||.
+infixr 3 $$
+infix  2 =., =:
+infix  1 :->
 
 -------------------------------------------------------------------------------
 -- Helper functions
@@ -44,13 +45,13 @@ class Monad m => MonadEmit m where
   emit    :: String -> m ()
 
 emitLn :: MonadEmit m => String -> m ()
-emitLn x = emit $ '\n' : x
+emitLn x = emit $ x ++ "\n"
 
 braces :: MonadEmit m => m () -> m ()
 braces x = do
-  emit " {"
+  emitLn "{"
   indent x
-  emit "}"
+  emitLn "}"
 
 indent :: MonadEmit m => m () -> m ()
 indent = emit . unlines . map ('\t' :) . lines . snd . runEmit
@@ -59,9 +60,8 @@ indent = emit . unlines . map ('\t' :) . lines . snd . runEmit
 -- Code generation
 -------------------------------------------------------------------------------
 class Generate a where
-  -- | Generate C code from something. This allows you to generate code from
-  --   'RValue's, 'LValue's, 'Stmt's and 'Decl's. Using it for anything other
-  --   than 'Decl' is mostly for debugging purposes (or for use with 'trustMe').
+  -- | Generate C code from something. Using it for anything other than 'Decl'
+  -- is mostly useful for debugging purposes (or for use with 'trustMe').
   generate :: a -> String
 instance Generate (RValue a) where
   generate = unRValue
@@ -120,7 +120,8 @@ instance Type a => Type (LValue a) where
 instance Type a => Type (RValue a) where
   typeOf _ = typeOf (undefined :: a)
 instance (TypeListTypes as, Type b) => Type (as :-> b) where
-  typeOf _ v = typeOf (undefined :: b) "" <+> parens ("*" ++ v ++ ")") ++ tuple (typeListTypes (undefined :: as))
+  typeOf _ v = typeOf (undefined :: b) ""
+           <+> parens ("*" ++ v) ++ tuple (typeListTypes (undefined :: as))
 
 -- | Give a list of types from a typed list of types.
 class TypeListTypes a where
@@ -294,6 +295,7 @@ instance MonadEmit (Stmt r) where
 stmt :: ToRValue t => t a -> Stmt r ()
 stmt x = emitLn $ unRValue x ++ ";"
 
+------------------------------------------------------------------------------
 -- Return statements
 -- | Empty return (for functions of void type).
 retvoid :: Stmt (RValue ()) ()
@@ -302,6 +304,11 @@ retvoid = emitLn "return;"
 -- | Return a value.
 ret :: ToRValue t => t a -> Stmt a ()
 ret x = emitLn $ "return" <+> unRValue x ++ ";"
+
+------------------------------------------------------------------------------
+-- | Scopes
+scope :: Stmt r () -> Stmt r ()
+scope = braces
 
 ------------------------------------------------------------------------------
 -- Variables
@@ -338,11 +345,11 @@ iftme :: ToRValue t
       -> Maybe (Stmt r ()) -- ^ Optional \"Else\" branch
       -> Stmt r ()
 iftme p t mf = do
-  emitLn $ "if" <+> parens (unRValue p)
+  emit $ "if" <+> parens (unRValue p) ++ " "
   braces t
   case mf of
     Nothing -> return ()
-    Just f  -> do emit $ "else"; braces f
+    Just f  -> do emit $ "else "; braces f
 
 -- | If statement with an else branch.
 ifte :: ToRValue t
@@ -366,12 +373,12 @@ switch :: ToRValue t
        -> Stmt r ()          -- ^ Default case
        -> Stmt r ()
 switch val cases def = do
-  emitLn $ "switch" ++ parens (unRValue val)
+  emit $ "switch" ++ parens (unRValue val) ++ " "
   braces $ do
     forM_ cases $ \(i, st) -> do
-      emitLn $ "case" <+> show i ++ ":"
+      emit $ "case" <+> show i ++ ": "
       braces st
-    emitLn $ "default: "
+    emit $ "default: "
     braces def
 
 ------------------------------------------------------------------------------
@@ -382,21 +389,34 @@ while :: ToRValue t
       -> Stmt r () -- ^ Loop body
       -> Stmt r ()
 while p s = do
-  emitLn $ "while" <+> parens (unRValue p)
+  emit $ "while" <+> parens (unRValue p) ++ " "
   braces s
 
--- | For loops.
+-- | For loops (currently desugared to while loops because for loops don't fit
+--   the model of how expressions contra statements work in this DSL).
 for :: ToRValue t
-    => t a       -- ^ Initialise
+    => Stmt r () -- ^ Initialise
     -> t Int     -- ^ Predicate
-    -> t b       -- ^ Increase
+    -> Stmt r () -- ^ Increase
     -> Stmt r () -- ^ Loop body
     -> Stmt r ()
 for i p inc s = do
-  emitLn $ "for" <+> parens (unRValue i ++ ";"
-                         <+> unRValue p    ++ ";"
-                         <+> unRValue inc)
-  braces s
+  i
+  while p (do s; inc)
+
+-- | Loop between a start and an end value increasing by a step value.
+forFromTo :: (Num n, NumType n, ToRValue t, ToRValue t', ToRValue t'')
+          => String -- ^ Name of the loop variable
+          -> t   n  -- ^ Start
+          -> t'  n  -- ^ Step
+          -> t'' n  -- ^ End
+          -> (RValue n -> Stmt r ()) -- ^ Loop body
+          -> Stmt r ()
+forFromTo v start step end body = braces $ do
+  i <- v =. start
+  while (i <. end) $ do
+    body (rvalue i)
+    i =: i +. lit 1
 
 -- | Break.
 cbreak :: Stmt r ()
@@ -479,8 +499,8 @@ defineNewFunction :: forall ss as b.
        )                -- ^ Function body
     -> Decl (as :-> b)  -- ^ Resulting function definition
 defineNewFunction name args f = do
-  emitLn $ typeOf (undefined :: b) name
-        ++ tuple (functionDef args (undefined :: as))
+  emit $ typeOf (undefined :: b) name
+      ++ tuple (functionDef args (undefined :: as)) ++ " "
   braces $
     emit $ snd . runEmit $ f (Function name) $ functionParams args (undefined :: as)
   return $ Function name
@@ -512,3 +532,14 @@ makeMain :: (MainType
               -> Stmt Int ()
             ) -> Decl MainType
 makeMain = defineNewFunction "main" ("argc" :* "argv" :* ())
+
+------------------------------------------------------------------------------
+-- Comments
+------------------------------------------------------------------------------
+-- | Top-level comment.
+commentDecl :: String -> Decl ()
+commentDecl s = emitLn $ "/*" <+> s <+> "*/"
+
+-- | Comment in a function.
+comment :: String -> Stmt r ()
+comment s = emitLn $ "/*" <+> s <+> "*/"
