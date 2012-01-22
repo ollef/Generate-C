@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, TypeOperators #-}
-import Language.C.Generate as C
+import Prelude hiding ((+), (==), (*), (-))
+import Language.C.Generate
 
 printint :: Val lr Int -> Stmt r ()
 printint n = stmt $ trustMe
@@ -11,9 +12,9 @@ program = do
   commentDecl "The factorial function"
   fac :: Fun (Int -> IO Int)
       <- defineNewFun "fac" (one "x") $ \fac x -> do
-    ifte (x C.== int 0)
+    ifte (x == int 0)
       (ret $ int 1)
-      (ret $ x C.* call fac (x C.- int 1))
+      (ret $ x * call fac (x - int 1))
 
   commentDecl "Program entry point"
   makeMain $ \main argc argv -> do

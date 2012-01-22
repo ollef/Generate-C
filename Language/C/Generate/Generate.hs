@@ -547,12 +547,12 @@ defineFun (Fun name) params bodyf = do
 
 ------------------------------------------------------------------------------
 -- Main
--- | The type of the main function (@int main(int argc, int** argv)@).
-type MainType = Fun (Int -> Ptr (Ptr Int) -> IO Int)
+-- | The type of the main function (@int main(int argc, char** argv)@).
+type MainType = Fun (Int -> Ptr (Ptr Char) -> IO Int)
 
 -- | Create a function called main with parameters @argc@ and @argv@.
 makeMain :: (MainType -> LVal Int
-                      -> LVal (Ptr (Ptr Int))
+                      -> LVal (Ptr (Ptr Char))
                       -> Stmt Int ()) -- ^ @main -> argc -> argv -> Body@
          -> Decl MainType
 makeMain = defineNewFun "main" ("argc" |> "argv")

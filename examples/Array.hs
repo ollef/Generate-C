@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, TypeOperators #-}
-import Language.C.Generate as C
+import Prelude hiding ((+))
+import Language.C.Generate
 import Language.C.Generate.Stdlib
 
 printint :: Val lr Int -> Stmt r ()
@@ -46,8 +47,7 @@ program = do
     forFromTo "i" (lit 0) (lit 1) len $ \i -> do
       xs ! i =: call (fun f) (xs ! i)
 
-  defineFun add5 (one "x") $
-                 \x -> do
-    ret $ x C.+ lit 5
+  defineFun add5 (one "x") $ \x -> do
+    ret $ x + lit 5
 
 main = writeFile "Array.c" $ generate program
