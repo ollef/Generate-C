@@ -9,7 +9,7 @@ program = do
   include "<stdio.h>"
   commentDecl "The factorial function"
   fac :: Fun (Int -> IO Int)
-      <- defineNewFun "fac" ("x" :> ()) $ \fac x -> do
+      <- defineNewFun "fac" (one "x") $ \fac x -> do
     ifte (x C.== int 0)
       (ret $ int 1)
       (ret $ x C.* call fac (x C.- int 1))

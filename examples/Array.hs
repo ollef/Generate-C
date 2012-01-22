@@ -41,7 +41,7 @@ program = do
     forFromTo "i" (lit 0) (lit 1) len $ \i -> do
       xs ! i =: call (fun f) (xs ! i)
 
-  defineFun add5 ("x" :> ()) $
+  defineFun add5 (one "x") $
                  \x -> do
     ret $ x C.+ lit 5
 

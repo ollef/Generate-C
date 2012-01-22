@@ -15,8 +15,6 @@ import Control.Monad
 import Control.Monad.Trans.Writer
 import Data.List
 
-import Language.C.Generate.TypeLists
-
 -------------------------------------------------------------------------------
 -- Fixity declarations
 -------------------------------------------------------------------------------
@@ -26,6 +24,7 @@ infixl 7 +, -
 infix  6 ==, /=, <, >, <=, >=
 infix  5 &&
 infix  4 ||
+infixr 3 :>, |>
 infix  2 =., =:
 
 -------------------------------------------------------------------------------
@@ -455,6 +454,19 @@ declareGlobal name = do
   return $ Val name
 
 ------------------------------------------------------------------------------
+-- Lists
+-- | Lists of fixed length.
+data Cons b = String :> b deriving (Eq, Ord, Show)
+
+-- | Sugar for not having to write the null element of the lists
+(|>) :: String -> String -> Cons (Cons ())
+a |> b = a :> b :> ()
+
+-- | Sugar for not having to write the null element of the lists
+one :: String -> Cons ()
+one a = a :> ()
+
+------------------------------------------------------------------------------
 -- Functions
 -- | Forward declaration of a function.
 declareFun :: forall f.
@@ -473,7 +485,7 @@ class FunType funtype => FunParams names funtype where
 instance Type a => FunParams () (IO a) where
   funParams () _ = []
 instance (InhabitedType a, FunParams names b)
-      => FunParams (String :> names) (a -> b) where
+      => FunParams (Cons names) (a -> b) where
   funParams (n :> ns) _ = n : funParams ns (undefined :: b)
 
 -- | Get the Haskell function that can be used for defining the body of the
@@ -487,7 +499,7 @@ instance FunDef () (IO a) (Stmt a ()) res where
       emit $ snd . runEmit $ body
     return $ Fun f
 instance FunDef params b def res
-      => FunDef (String :> params) (a -> b) (LVal a -> def) res where
+      => FunDef (Cons params) (a -> b) (LVal a -> def) res where
   funDef (param :> ps) f defline _ bodyf =
     funDef ps f defline (undefined :: b) (bodyf $ Val param)
 

@@ -51,15 +51,14 @@ module Language.C.Generate
   , include
   -- ** Globals
   , declareGlobal
+  -- ** Fixed length name lists
   -- ** Functions
+  , Cons((:>)), (|>), one
   , declareFun, defineNewFun, defineFun
   -- ** Main
   , MainType, makeMain
-  -- * Typed lists
-  , (:>)(..), (|>)
   -- * Comments
   , commentDecl, comment
   ) where
 import qualified Prelude
 import Language.C.Generate.Generate
-import Language.C.Generate.TypeLists

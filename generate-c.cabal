@@ -25,5 +25,4 @@ Library
     Exposed-modules: Language.C.Generate
                    , Language.C.Generate.Stdlib
     Other-modules:   Language.C.Generate.Generate
-                     Language.C.Generate.TypeLists
     GHC-Options:     -Wall
