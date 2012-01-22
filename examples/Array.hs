@@ -30,9 +30,9 @@ program = do
     forFromTo "i" (lit 0) (lit 1) len $ \i ->
       arr ! i =: i
     comment "Map our function over the array"
-    stmt $ call map f arr len
+    scall map f arr len
     comment "Print the array"
-    stmt $ call printArr arr len
+    scall printArr arr len
     comment "Clean up"
     stmt $ free arr
     ret $ lit 0

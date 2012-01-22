@@ -76,14 +76,14 @@ instance Generate (Decl a) where
 -- | C values.
 newtype Val lr a = Val {unVal :: String} deriving Show
 
--- | Left or right
+-- | Left or right.
 data L
 data R
 -- | Values that can be used on the left-hand side of assignments.
 type LVal a = Val L a
--- | Values that can't be assigned
+-- | Values that can't be assigned.
 type RVal a = Val R a
--- | Convert LVal to RVal
+-- | Convert an LVal to an RVal.
 rval :: LVal a -> RVal a
 rval (Val x) = Val x
 
@@ -237,8 +237,8 @@ boolbinop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 (<), (>), (<=), (>=)
   :: NumType a
   => Val lr a -> Val lr' a -> RVal Int
-(<) = boolbinop "<"
-(>) = boolbinop ">"
+(<)  = boolbinop "<"
+(>)  = boolbinop ">"
 (<=) = boolbinop "<="
 (>=) = boolbinop ">="
 
@@ -266,19 +266,33 @@ binop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 -- Function calls
 -- | Get a Haskell function taking the arguments from a C function's type
 class FunArgs funtype restype | funtype -> restype where
-  functionArgs :: Fun a -> [String]
-               -> funtype -> restype
+  funArgs :: Fun a -> [String] -> funtype -> restype
 instance FunArgs (IO a) (Val R a) where
-  functionArgs (Fun f) args _ = Val $ f ++ tuple (reverse args)
+  funArgs (Fun f) args _ = Val $ f ++ tuple (reverse args)
 instance FunArgs b b' => FunArgs (a -> b) (Val lr a -> b') where
-  functionArgs f args _ = \val ->
-    (functionArgs f (unVal val : args) (undefined :: b) :: b')
+  funArgs f args _ = \val ->
+    (funArgs f (unVal val : args) (undefined :: b) :: b')
 
 -- | Function calls
 call :: forall f res. FunArgs f res
-     => Fun f -- ^ Fun
-     -> res        -- ^ Arguments and result
-call f = functionArgs f [] (undefined :: f)
+     => Fun f -- ^ Function
+     -> res   -- ^ Arguments and result
+call f = funArgs f [] (undefined :: f)
+
+-- | Get a Haskell function taking the arguments from a C function's type
+class SFunArgs funtype restype | funtype -> restype where
+  sfunArgs :: Fun a -> [String] -> funtype -> restype
+instance SFunArgs (IO a) (Stmt r ()) where
+  sfunArgs (Fun f) args _ = stmt $ Val $ f ++ tuple (reverse args)
+instance SFunArgs b b' => SFunArgs (a -> b) (Val lr a -> b') where
+  sfunArgs f args _ = \val ->
+    (sfunArgs f (unVal val : args) (undefined :: b) :: b')
+
+-- | A single function call statement
+scall :: forall f res. SFunArgs f res
+      => Fun f -- ^ Function
+      -> res   -- ^ Arguments
+scall f = sfunArgs f [] (undefined :: f)
 
 ------------------------------------------------------------------------------
 -- Untrusted code
@@ -338,8 +352,8 @@ newvar name = do
   return $ Val name
 
 -- | Variable assignment.
-(=:) :: LVal a    -- ^ Variable
-     -> Val lr a  -- ^ Value
+(=:) :: LVal a   -- ^ Variable
+     -> Val lr a -- ^ Value
      -> Stmt r ()
 Val var =: val = emitLn $ var <+> "=" <+> unVal val ++ ";"
 
@@ -447,7 +461,7 @@ include file = emitLn $ "#include" <+> file
 ------------------------------------------------------------------------------
 -- Global variables
 declareGlobal :: forall a. InhabitedType a
-              => String          -- ^ Global name
+              => String        -- ^ Global name
               -> Decl (LVal a) -- ^ Global variable
 declareGlobal name = do
   emitLn (typeOf (undefined :: a) name)

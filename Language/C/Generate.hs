@@ -30,7 +30,7 @@ module Language.C.Generate
     -- | Addition, subtraction, multiplication, division.
 
   -- ** Function calls
-  , call
+  , call, scall
   -- ** Untrusted code
   , trustMe
   -- * Statements

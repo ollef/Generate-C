@@ -25,7 +25,7 @@ malloc = cast $ call mallocFun $ sizeof (undefined :: a)
 
 -- | Allocate an array (@sizeof(type) * size@).
 arrayMalloc :: forall lr a. Type a
-            => Val lr Int     -- ^ Size
+            => Val lr Int   -- ^ Size
             -> RVal (Ptr a) -- ^ Pointer to the array
 arrayMalloc size =
   cast $ call mallocFun $ sizeof (undefined :: a) C.* size
