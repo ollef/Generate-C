@@ -25,16 +25,21 @@ program = do
     comment "Create a function pointer"
     f   <- "f" =. funPtr add5
     len <- "len" =. int 10
+
     comment "Allocate and initialise the array"
     arr <- "arr" =. arrayMalloc len
     forFromTo "i" (lit 0) (lit 1) len $ \i ->
       arr ! i =: i
+
     comment "Map our function over the array"
     scall map f arr len
+
     comment "Print the array"
     scall printArr arr len
+
     comment "Clean up"
-    stmt $ free arr
+    free arr
+
     ret $ lit 0
 
   defineFun map ("f" :> "xs" |> "len") $ \f xs len -> do

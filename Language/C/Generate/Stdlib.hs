@@ -31,7 +31,7 @@ arrayMalloc size =
   cast $ call mallocFun $ sizeof (undefined :: a) C.* size
 
 -- | Free memory.
-free :: forall a lr. Type a
+free :: Type a
      => Val lr (Ptr a) -- ^ Pointer to the memory location to free
-     -> RVal ()
-free ptr = call freeFun $ cast ptr
+     -> Stmt r ()
+free ptr = scall freeFun $ cast ptr

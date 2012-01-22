@@ -472,11 +472,11 @@ declareGlobal name = do
 -- | Lists of fixed length.
 data Cons b = String :> b deriving (Eq, Ord, Show)
 
--- | Sugar for not having to write the null element of the lists
+-- | Sugar for not having to write the null element of lists of length >= 2.
 (|>) :: String -> String -> Cons (Cons ())
 a |> b = a :> b :> ()
 
--- | Sugar for not having to write the null element of the lists
+-- | Sugar for not having to write the null element of singleton lists.
 one :: String -> Cons ()
 one a = a :> ()
 

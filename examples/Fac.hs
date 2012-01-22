@@ -7,6 +7,7 @@ printint n = stmt $ trustMe
 
 program = do
   include "<stdio.h>"
+
   commentDecl "The factorial function"
   fac :: Fun (Int -> IO Int)
       <- defineNewFun "fac" (one "x") $ \fac x -> do
