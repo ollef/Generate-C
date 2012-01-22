@@ -1,12 +1,10 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables, TypeOperators #-}
 module Test where
 
-import CGen
-import TypeLists
-import Stdlib
+import Language.C.Generate
 
 test :: Int :* Int :* () :-> Int
-test = Function "test"
+test = fun $ trustMe "test"
 
 test2 :: RValue Int
 test2 = test $$ int 2 :* int 3 :* ()
@@ -47,4 +45,10 @@ theMain = makeMain $
 functions = do
   tester
   theMain
+  test :: () :-> ()
+       <- defineNewFunction "test" () $ \test () -> do
+    ptr :: LValue (Ptr ()) <- "ptr" =. nullPtr
+    -- x <- "x" =. deref ptr -- Shouldn't work
+    retvoid
+    -- ret $ deref ptr -- Shouldn't work
   return ()

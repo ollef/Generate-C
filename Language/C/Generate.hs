@@ -12,14 +12,20 @@ module Language.C.Generate
   -- ** Type casting
   , cast, castFun
   -- ** Literals
-  , lit, int, float, double, char, bool
+  , lit
+  -- | Lit will work most of the time, but sometimes it is nice to be able to
+  --   fix the type of a literal:
+
+  , int, float, double, char, bool
   -- ** Numeric
   , (==.), (/=.)
     -- | Equality, inequality.
   , (<.), (>.), (<=.), (>=.)
     -- | Less than, greater than, less than or equal, greater than or equal.
   , (&&.), (||.)
-    -- | Boolean and, boolean or.
+    -- | Logical and, logical or.
+
+  , cnot
   , (+.), (-.), (*.), (/.)
     -- | Addition, subtraction, multiplication, division.
 

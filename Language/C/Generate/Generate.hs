@@ -101,19 +101,17 @@ newtype as :-> b = Function {unFunction :: String}
 --   which is put in the variable position for each type.
 class Type a where
   typeOf :: a -> String -> String
+instance Type () where
+  typeOf _ v = "void" <+> v
 instance Type Int where
   typeOf _ v = "int" <+> v
 instance Type Char where
   typeOf _ v = "char" <+> v
-instance Type () where
-  typeOf _ v = "void" <+> v
 instance Type Float where
   typeOf _ v = "float" <+> v
 instance Type Double where
   typeOf _ v = "double" <+> v
 instance Type a => Type (Ptr a) where
-  typeOf _ v = typeOf (undefined :: a) "" ++ "*" <+> v
-instance Type a => Type [a] where
   typeOf _ v = typeOf (undefined :: a) "" ++ "*" <+> v
 instance Type a => Type (LValue a) where
   typeOf _ = typeOf (undefined :: a)
@@ -122,6 +120,15 @@ instance Type a => Type (RValue a) where
 instance (TypeListTypes as, Type b) => Type (as :-> b) where
   typeOf _ v = typeOf (undefined :: b) ""
            <+> parens ("*" ++ v) ++ tuple (typeListTypes (undefined :: as))
+-- | The subset of 'Type's which have values.
+class Type a => InhabitedType a where
+instance InhabitedType Int where
+instance InhabitedType Char where
+instance InhabitedType Float where
+instance InhabitedType Double where
+instance Type a => InhabitedType (Ptr a) where
+instance (TypeListTypes as, Type b) => InhabitedType (as :-> b) where
+
 
 -- | Give a list of types from a typed list of types.
 class TypeListTypes a where
@@ -154,7 +161,7 @@ address :: ToRValue t => t a -> LValue (Ptr a)
 address x = LValue $ parens $ "&" ++ unRValue x
 
 -- | Dereference a pointer.
-deref :: ToRValue t => t (Ptr a) -> LValue a
+deref :: (InhabitedType a, ToRValue t) => t (Ptr a) -> LValue a
 deref x = LValue $ parens $ "*" ++ unRValue x
 
 -- | Function to function pointer.
@@ -188,7 +195,8 @@ castFun = fun . cast . funPtr
 -- Numeric
 -- | The subset of 'Type's which you can do numeric operations on and create
 --   constant literals of.
-class Type a => NumType a where
+class InhabitedType a => NumType a where
+  -- | Create a C literal from a Haskell value.
   lit :: a -> RValue a
 instance NumType Int where
   lit = RValue . show
@@ -239,6 +247,11 @@ boolbinop op x y = RValue $ parens $ unRValue x <+> op <+> unRValue y
   => t Int -> t' Int -> RValue Int
 (&&.) = boolbinop "&&"
 (||.) = boolbinop "||"
+
+-- | Logical negation (@!x@).
+cnot :: ToRValue t
+     => t Int -> RValue Int
+cnot x = RValue $ parens $ "!" ++ unRValue x
 
 binop :: (Type a, ToRValue t, ToRValue t')
       => String -> t a -> t' a -> RValue a
@@ -298,11 +311,11 @@ stmt x = emitLn $ unRValue x ++ ";"
 ------------------------------------------------------------------------------
 -- Return statements
 -- | Empty return (for functions of void type).
-retvoid :: Stmt (RValue ()) ()
+retvoid :: Stmt () ()
 retvoid = emitLn "return;"
 
 -- | Return a value.
-ret :: ToRValue t => t a -> Stmt a ()
+ret :: (InhabitedType a, ToRValue t) => t a -> Stmt a ()
 ret x = emitLn $ "return" <+> unRValue x ++ ";"
 
 ------------------------------------------------------------------------------
@@ -313,7 +326,7 @@ scope = braces
 ------------------------------------------------------------------------------
 -- Variables
 -- | Create a variable with an initial value.
-(=.) :: forall t a r. (Type a, ToRValue t)
+(=.) :: forall t a r. (InhabitedType a, ToRValue t)
      => String            -- ^ Variable name
      -> t a               -- ^ Initial value
      -> Stmt r (LValue a) -- ^ Variable
@@ -322,7 +335,7 @@ name =. val = do
   return $ LValue name
 
 -- | Create a variable with no initial value.
-newvar :: forall a r. Type a
+newvar :: forall a r. InhabitedType a
     => String            -- ^ Variable name
     -> Stmt r (LValue a) -- ^ Variable
 newvar name = do
@@ -445,7 +458,7 @@ include file = emitLn $ "#include" <+> file
 
 ------------------------------------------------------------------------------
 -- Global variables
-declareGlobal :: forall a. Type a
+declareGlobal :: forall a. InhabitedType a
               => String          -- ^ Global name
               -> Decl (LValue a) -- ^ Global variable
 declareGlobal name = do

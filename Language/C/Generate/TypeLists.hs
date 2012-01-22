@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeFamilies, TypeOperators #-}
--- | Typed lists.
+-- | Heterogeneously typed lists.
 module Language.C.Generate.TypeLists where
 
 data a :* b = a :* b deriving (Eq, Ord, Show)
