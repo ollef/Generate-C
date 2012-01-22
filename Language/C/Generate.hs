@@ -29,6 +29,9 @@ module Language.C.Generate
   , (+), (-), (*), (/)
     -- | Addition, subtraction, multiplication, division.
 
+  -- ** Strings
+  , string
+
   -- ** Function calls
   , call, scall
   -- ** Untrusted code

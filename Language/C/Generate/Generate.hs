@@ -261,6 +261,11 @@ binop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 (-) = binop "-"
 (*) = binop "*"
 (/) = binop "/"
+------------------------------------------------------------------------------
+-- Strings
+-- | Create a string literal from a Haskell string.
+string :: String -> RVal (Ptr Char)
+string x = Val $ "\"" ++ x ++ "\""
 
 ------------------------------------------------------------------------------
 -- Function calls
@@ -277,6 +282,7 @@ instance FunArgs b b' => FunArgs (a -> b) (Val lr a -> b') where
 call :: forall f res. FunArgs f res
      => Fun f -- ^ Function
      -> res   -- ^ Arguments and result
+              --   ('RVal' of the function's return type)
 call f = funArgs f [] (undefined :: f)
 
 -- | Get a Haskell function taking the arguments from a C function's type
@@ -291,7 +297,7 @@ instance SFunArgs b b' => SFunArgs (a -> b) (Val lr a -> b') where
 -- | A single function call statement
 scall :: forall f res. SFunArgs f res
       => Fun f -- ^ Function
-      -> res   -- ^ Arguments
+      -> res   -- ^ Arguments and result ('Stmt')
 scall f = sfunArgs f [] (undefined :: f)
 
 ------------------------------------------------------------------------------
