@@ -24,7 +24,7 @@ infixl 7 +, -
 infix  6 ==, /=, <, >, <=, >=
 infix  5 &&
 infix  4 ||
-infixr 3 :>, |>
+infixr 3 :>
 infix  2 =., =:
 
 -------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ name =. val = do
 
 -- | Create a variable with no initial value.
 newvar :: forall a r. InhabitedType a
-    => String            -- ^ Variable name
+    => String          -- ^ Variable name
     -> Stmt r (LVal a) -- ^ Variable
 newvar name = do
   emitLn $ typeOf (undefined :: a) name ++ ";"
@@ -478,13 +478,14 @@ declareGlobal name = do
 -- | Lists of fixed length.
 data Cons b = String :> b deriving (Eq, Ord, Show)
 
--- | Sugar for not having to write the null element of lists of length >= 2.
-(|>) :: String -> String -> Cons (Cons ())
-a |> b = a :> b :> ()
-
--- | Sugar for not having to write the null element of singleton lists.
-one :: String -> Cons ()
-one a = a :> ()
+class NameList a b | a -> b where
+  nameList :: a -> b
+instance NameList [Char] (Cons ()) where
+  nameList s = s :> ()
+instance NameList () () where
+  nameList = id
+instance NameList as bs => NameList (Cons as) (Cons bs) where
+  nameList (a :> as) = a :> nameList as
 
 ------------------------------------------------------------------------------
 -- Functions
@@ -524,25 +525,32 @@ instance FunDef params b def res
     funDef ps f defline (undefined :: b) (bodyf $ Val param)
 
 -- | Define a function that has not been declared before.
-defineNewFun :: forall f def names.
-  ( FunDef names f def f
-  , FunParams names f
+defineNewFun :: forall f def nl names.
+  ( NameList names nl
+  , FunDef nl f def f
+  , FunParams nl f
   ) => String         -- ^ Function name
     -> names          -- ^ Parameter names
     -> (Fun f -> def) -- ^ Function from input to function body;
                       --   the function can be used recursively
     -> Decl (Fun f)
 defineNewFun name params bodyf =
-  funDef params name defline (undefined :: f) (bodyf $ Fun name)
-  where paramNames          = funParams params (undefined :: f)
+  funDef (nameList params)
+         name
+         defline
+         (undefined :: f)
+         (bodyf $ Fun name)
+  where paramNames          = funParams (nameList params)
+                                        (undefined :: f)
         (inptypes, restype) = funTypeView (undefined :: f)
         defline    = restype "" <+> name ++ tuple (zipWith ($) inptypes
                                                                paramNames)
 
 -- | Define a function that has been declared before.
-defineFun :: forall def names f.
-  ( FunDef names f def f
-  , FunParams names f
+defineFun :: forall def nl names f.
+  ( NameList names nl
+  , FunDef nl f def f
+  , FunParams nl f
   ) => Fun f   -- ^ Declared function
     -> names   -- ^ Parameter names
     -> def     -- ^ Function from input to function body
@@ -561,7 +569,7 @@ makeMain :: (MainType -> LVal Int
                       -> LVal (Ptr (Ptr Char))
                       -> Stmt Int ()) -- ^ @main -> argc -> argv -> Body@
          -> Decl MainType
-makeMain = defineNewFun "main" ("argc" |> "argv")
+makeMain = defineNewFun "main" ("argc" :> "argv")
 
 ------------------------------------------------------------------------------
 -- Comments

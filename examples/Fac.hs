@@ -11,15 +11,15 @@ program = do
 
   comment "The factorial function"
   fac :: Fun (Int -> IO Int)
-      <- defineNewFun "fac" (one "x") $ \fac x -> do
-    ifte (x == int 0)
-      (ret $ int 1)
-      (ret $ x * call fac (x - int 1))
+      <- defineNewFun "fac" "x" $ \fac x -> do
+    ifte (x == lit 0)
+      (ret $ lit 1)
+      (ret $ x * call fac (x - lit 1))
 
   comment "Program entry point"
   makeMain $ \main argc argv -> do
     comment "Call fac with argument 5"
-    printint (call fac $ int 5)
+    printint (call fac $ lit 5)
     ret $ lit 0
 
 main = writeFile "Fac.c" $ generate program

@@ -55,8 +55,8 @@ module Language.C.Generate
   -- ** Globals
   , declareGlobal
   -- ** Fixed length name lists
-  -- ** Functions
-  , Cons((:>)), (|>), one
+  -- ** Function
+  , Cons((:>))
   , declareFun, defineNewFun, defineFun
   -- ** Main
   , MainType, makeMain

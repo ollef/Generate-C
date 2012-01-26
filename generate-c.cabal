@@ -17,7 +17,9 @@ Stability: Experimental
 Category: Language, Code Generation
 Build-type: Simple
 Extra-source-files: README
-                  -- examples/...
+                    examples/Array.hs
+                    examples/Fac.hs
+                    examples/Makefile
 Cabal-version: >= 1.6
 Library
     Build-depends:   base < 6

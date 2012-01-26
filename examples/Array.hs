@@ -21,7 +21,7 @@ program = do
       <- declareFun "add5"
 
   printArr :: Fun (Ptr Int -> Int -> IO ())
-           <- defineNewFun "printArr" ("arr" |> "len") $ \_ arr len -> do
+           <- defineNewFun "printArr" ("arr" :> "len") $ \_ arr len -> do
     printstr $ string "printing the array\\n"
     forFromTo "i" (lit 0) (lit 1) len $ \i ->
       printint $ arr ! i
@@ -48,11 +48,11 @@ program = do
 
     ret $ lit 0
 
-  defineFun map ("f" :> "xs" |> "len") $ \f xs len -> do
+  defineFun map ("f" :> "xs" :> "len") $ \f xs len -> do
     forFromTo "i" (lit 0) (lit 1) len $ \i -> do
       xs ! i =: call (fun f) (xs ! i)
 
-  defineFun add5 (one "x") $ \x -> do
+  defineFun add5 "x" $ \x -> do
     ret $ x + lit 5
 
 main = writeFile "Array.c" $ generate program
