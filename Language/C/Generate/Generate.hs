@@ -6,7 +6,8 @@
            , MultiParamTypeClasses
            , ScopedTypeVariables
            , TypeOperators
-           , UndecidableInstances #-}
+           , UndecidableInstances 
+           , Rank2Types #-}
 -- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate.Generate where
 import Prelude hiding ((<), (+))
@@ -24,6 +25,7 @@ infixl 7 +, -
 infix  6 ==, /=, <, >, <=, >=
 infix  5 &&
 infix  4 ||
+infix  4 :->
 infixr 3 :>
 infix  2 =., =:
 
@@ -89,6 +91,8 @@ rval (Val x) = Val x
 
 -- | Pointer type.
 data Ptr a
+-- | Struct type.
+data Struct t
 -- | Function type.
 newtype Fun t = Fun {unFun :: String}
 
@@ -116,6 +120,8 @@ instance Type a => Type (Val lr a) where
 instance FunType a => Type (Fun a) where
   typeOf _ v = res "" <+> parens ("*" ++ v) ++ tuple (map ($ "") params)
     where (params, res) = funTypeView (undefined :: a)
+instance StructClass a => Type (Struct a) where
+  typeOf _ v = "struct" <+> structName (undefined :: a) <+> v
 
 -- | Get a list of type functions from a function type
 class FunType a where
@@ -139,6 +145,7 @@ instance InhabitedType Float where
 instance InhabitedType Double where
 instance Type a => InhabitedType (Ptr a) where
 instance FunType a => InhabitedType (Fun a) where
+instance StructClass a => InhabitedType (Struct a) where
 
 ------------------------------------------------------------------------------
 -- Expressions
@@ -261,6 +268,7 @@ binop op x y = Val $ parens $ unVal x <+> op <+> unVal y
 (-) = binop "-"
 (*) = binop "*"
 (/) = binop "/"
+
 ------------------------------------------------------------------------------
 -- Strings
 -- | Create a string literal from a Haskell string.
@@ -476,15 +484,15 @@ declareGlobal name = do
 ------------------------------------------------------------------------------
 -- Lists
 -- | Lists of fixed length.
-data Cons b = String :> b deriving (Eq, Ord, Show)
+data a :> b = a :> b deriving (Eq, Ord, Show)
 
 class NameList a b | a -> b where
   nameList :: a -> b
-instance NameList [Char] (Cons ()) where
+instance NameList [Char] (String :> ()) where
   nameList s = s :> ()
 instance NameList () () where
   nameList = id
-instance NameList as bs => NameList (Cons as) (Cons bs) where
+instance NameList as bs => NameList (String :> as) (String :> bs) where
   nameList (a :> as) = a :> nameList as
 
 ------------------------------------------------------------------------------
@@ -506,7 +514,7 @@ class FunType funtype => FunParams names funtype where
 instance Type a => FunParams () (IO a) where
   funParams () _ = []
 instance (InhabitedType a, FunParams names b)
-      => FunParams (Cons names) (a -> b) where
+      => FunParams (String :> names) (a -> b) where
   funParams (n :> ns) _ = n : funParams ns (undefined :: b)
 
 -- | Get the Haskell function that can be used for defining the body of the
@@ -515,12 +523,12 @@ class FunDef params fun def res | params fun res -> def where
   funDef :: params -> String -> String -> fun -> def -> Decl (Fun res)
 instance FunDef () (IO a) (Stmt a ()) res where
   funDef () f defline _ body = do
-    emit defline
+    emit $ defline ++ " "
     braces $
       emit $ snd . runEmit $ body
     return $ Fun f
 instance FunDef params b def res
-      => FunDef (Cons params) (a -> b) (LVal a -> def) res where
+      => FunDef (String :> params) (a -> b) (LVal a -> def) res where
   funDef (param :> ps) f defline _ bodyf =
     funDef ps f defline (undefined :: b) (bodyf $ Val param)
 
@@ -570,6 +578,55 @@ makeMain :: (MainType -> LVal Int
                       -> Stmt Int ()) -- ^ @main -> argc -> argv -> Body@
          -> Decl MainType
 makeMain = defineNewFun "main" ("argc" :> "argv")
+
+------------------------------------------------------------------------------
+-- Structs
+
+class StructClass t where
+  structName :: t -> String
+
+newtype t :-> a = Field (forall lr. Val lr (Struct t) -> LVal a)
+
+class StructBody names fields where
+  structBody :: names -> fields -> [String]
+instance StructBody () () where
+  structBody () _ = []
+instance (Type a, StructBody names fields)
+      => StructBody ([Char] :> names)
+                    (t :-> a :> fields) where
+  structBody (n :> ns) _ =
+    typeOf (undefined :: a) n : structBody ns (undefined :: fields)
+instance StructBody ([Char] :> ()) (t :-> a :> ()) =>
+         StructBody ([Char] :> ()) (t :-> a) where
+  structBody ns _ = structBody ns (undefined :: t :-> a :> ())
+
+class StructFields struct names fields | fields -> struct where
+  structFields :: names -> struct -> fields
+instance StructFields t () () where
+  structFields () _ = ()
+instance StructFields t names fields
+      => StructFields t ([Char] :> names)
+                        (t :-> a :> fields) where
+  structFields (n :> ns) _ =
+    Field (\v -> Val $ unVal v ++ "." ++ n) :> structFields ns (undefined :: t)
+instance StructFields t ([Char] :> ()) (t :-> a :> ()) =>
+         StructFields t ([Char] :> ()) (t :-> a) where
+  structFields ns _ = case structFields ns (undefined :: t) :: (t :-> a :> ()) of
+    a :> () -> a
+
+defineStruct :: forall t nl names fields.
+  ( Type (Struct t)
+  , NameList names nl
+  , StructBody nl fields
+  , StructFields t nl fields
+  ) => names       -- ^ Field names
+    -> Decl fields -- ^ Feidl accessors
+defineStruct ns = do
+  emit $ typeOf (undefined :: Struct t) "" ++ " {\n"
+  indent $ mapM_ (emitLn . (++ ";")) $ structBody (nameList ns)
+                                                  (undefined :: fields)
+  emit "};\n"
+  return $ structFields (nameList ns) (undefined :: t)
 
 ------------------------------------------------------------------------------
 -- Comments

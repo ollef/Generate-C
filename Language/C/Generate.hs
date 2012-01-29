@@ -4,7 +4,7 @@ module Language.C.Generate
   -- * Code generation
     Generate, generate
   -- * C types
-  , Val, LVal, RVal, Ptr, Fun, Type, typeOf, rval
+  , Val, LVal, RVal, Ptr, Fun, Struct, Type, typeOf, rval
   -- * Expressions
   , sizeof, cond
   -- ** Pointers
@@ -54,12 +54,16 @@ module Language.C.Generate
   , include
   -- ** Globals
   , declareGlobal
-  -- ** Fixed length name lists
+  -- ** Fixed length lists
   -- ** Function
-  , Cons((:>))
+  , (:>)(..)
   , declareFun, defineNewFun, defineFun
   -- ** Main
   , MainType, makeMain
+  -- ** Structs
+  , StructClass(..)
+  , defineStruct
+  , (:->)(..)
   -- * Comments
   , comment
   ) where
