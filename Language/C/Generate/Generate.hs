@@ -12,6 +12,7 @@
 module Language.C.Generate.Generate where
 import Prelude hiding ((<), (+))
 
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Writer
 import Data.List
@@ -321,7 +322,7 @@ trustMe = Val
 ------------------------------------------------------------------------------
 -- | Statements typed with the return type of the function they're in.
 newtype Stmt r a = Stmt {unStmt :: Writer String a}
-  deriving (Monad)
+  deriving (Applicative, Functor, Monad)
 
 instance MonadEmit (Stmt r) where
   runEmit = runWriter . unStmt
@@ -460,7 +461,7 @@ continue = emitLn "continue;"
 ------------------------------------------------------------------------------
 -- | A top-level declaration
 newtype Decl a = Decl {unDecl :: Writer String a}
-  deriving (Monad)
+  deriving (Applicative, Functor, Monad)
 instance MonadEmit Decl where
   runEmit = runWriter . unDecl
   emit    = Decl . tell
