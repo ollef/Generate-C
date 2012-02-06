@@ -11,11 +11,19 @@
 -- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate.Generate where
 import Prelude hiding ((<), (+))
+import qualified Prelude
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans
+import Control.Monad.Trans.State
 import Control.Monad.Trans.Writer
+import Data.Char
 import Data.List
+import qualified Data.Map as M
+import Data.Map(Map)
+import Data.Maybe
+import Data.Monoid
 
 -------------------------------------------------------------------------------
 -- Fixity declarations
@@ -44,20 +52,24 @@ tuple :: [String] -> String
 tuple ss = parens $ intercalate ", " ss
 
 class Monad m => MonadEmit m where
-  runEmit :: m a -> (a, String)
+  runEmit :: m a -> ((a, Map String Int), String)
   emit    :: String -> m ()
 
 emitLn :: MonadEmit m => String -> m ()
 emitLn x = emit $ x ++ "\n"
 
-braces :: MonadEmit m => m () -> m ()
+braces :: Stmt r () -> Stmt r ()
 braces x = do
   emitLn "{"
   indent x
   emitLn "}"
 
-indent :: MonadEmit m => m () -> m ()
-indent = emit . unlines . map ('\t' :) . lines . snd . runEmit
+indent :: Stmt r () -> Stmt r ()
+indent m =
+  let (((), names), s) = runEmit m
+   in do
+     Stmt $ put names
+     emit (unlines $ map ('\t' :) $ lines s)
 
 -------------------------------------------------------------------------------
 -- Code generation
@@ -317,16 +329,36 @@ trustMe :: String   -- ^ C code
         -> Val lr a
 trustMe = Val
 
+-------------------------------------------------------------------------------
+-- Scope handling
+-------------------------------------------------------------------------------
+type UsedVarsT m a = StateT (Map String Int) m a
+
+freshName :: Monad m => String -> UsedVarsT m String
+freshName v = do
+  let v' = reverse $ dropWhile isDigit (reverse v)
+  when (null v') $ error $ "C.Generate: invalid name: " ++ v
+  n <- gets $ fromMaybe 0 . M.lookup v'
+  modify $ M.insert v' (n Prelude.+ 1)
+  return $ v' ++ if n Prelude.== 0 then "" else show n
+
+inNewScope :: Monad m => UsedVarsT m a -> UsedVarsT m a
+inNewScope m = do
+  u <- get
+  r <- m
+  put u
+  return r
+
 ------------------------------------------------------------------------------
 -- Statements
 ------------------------------------------------------------------------------
 -- | Statements typed with the return type of the function they're in.
-newtype Stmt r a = Stmt {unStmt :: Writer String a}
+newtype Stmt r a = Stmt {unStmt :: UsedVarsT (Writer String) a}
   deriving (Applicative, Functor, Monad)
 
 instance MonadEmit (Stmt r) where
-  runEmit = runWriter . unStmt
-  emit    = Stmt . tell
+  runEmit = runWriter . flip runStateT mempty . unStmt
+  emit    = Stmt . lift . tell
 
 -- | Statement from a value.
 stmt :: Val lr a -> Stmt r ()
@@ -345,7 +377,7 @@ ret x = emitLn $ "return" <+> unVal x ++ ";"
 ------------------------------------------------------------------------------
 -- | Scopes
 scope :: Stmt r () -> Stmt r ()
-scope = braces
+scope = Stmt . inNewScope . unStmt . braces
 
 ------------------------------------------------------------------------------
 -- Variables
@@ -355,16 +387,18 @@ scope = braces
      -> Val lr a        -- ^ Initial value
      -> Stmt r (LVal a) -- ^ Variable
 name =. val = do
-  emitLn $ typeOf (undefined :: a) name <+> "=" <+> unVal val ++ ";"
-  return $ Val name
+  name' <- Stmt $ freshName name
+  emitLn $ typeOf (undefined :: a) name' <+> "=" <+> unVal val ++ ";"
+  return $ Val name'
 
 -- | Create a variable with no initial value.
 newvar :: forall a r. InhabitedType a
     => String          -- ^ Variable name
     -> Stmt r (LVal a) -- ^ Variable
 newvar name = do
-  emitLn $ typeOf (undefined :: a) name ++ ";"
-  return $ Val name
+  name' <- Stmt $ freshName name
+  emitLn $ typeOf (undefined :: a) name' ++ ";"
+  return $ Val name'
 
 -- | Variable assignment.
 (=:) :: LVal a   -- ^ Variable
@@ -381,10 +415,10 @@ iftme :: Val lr Int        -- ^ Predicate
       -> Stmt r ()
 iftme p t mf = do
   emit $ "if" <+> parens (unVal p) ++ " "
-  braces t
+  scope t
   case mf of
     Nothing -> return ()
-    Just f  -> do emit $ "else "; braces f
+    Just f  -> do emit $ "else "; scope f
 
 -- | If statement with an else branch.
 ifte :: Val lr Int -- ^ Predicate
@@ -406,12 +440,12 @@ switch :: Val lr Int         -- ^ Value to switch on
        -> Stmt r ()
 switch val cases def = do
   emit $ "switch" ++ parens (unVal val) ++ " "
-  braces $ do
+  scope $ do
     forM_ cases $ \(i, st) -> do
       emit $ "case" <+> show i ++ ": "
-      braces st
+      scope st
     emit $ "default: "
-    braces def
+    scope def
 
 ------------------------------------------------------------------------------
 -- Loops
@@ -421,7 +455,7 @@ while :: Val lr Int -- ^ Predicate
       -> Stmt r ()
 while p s = do
   emit $ "while" <+> parens (unVal p) ++ " "
-  braces s
+  scope s
 
 -- | For loops (currently desugared to while loops because C's for loops don't
 --   fit the model of how expressions contra statements work in this DSL).
@@ -442,7 +476,7 @@ forFromTo :: (Num n, NumType n)
           -> Val lr'' n            -- ^ End
           -> (RVal n -> Stmt r ()) -- ^ Loop body
           -> Stmt r ()
-forFromTo v start step end body = braces $ do
+forFromTo v start step end body = scope $ do
   i <- v =. start
   while (i < end) $ do
     body (rval i)
@@ -460,11 +494,14 @@ continue = emitLn "continue;"
 -- Declarations (top-level)
 ------------------------------------------------------------------------------
 -- | A top-level declaration
-newtype Decl a = Decl {unDecl :: Writer String a}
+newtype Decl a = Decl {unDecl :: UsedVarsT (Writer String) a}
   deriving (Applicative, Functor, Monad)
 instance MonadEmit Decl where
-  runEmit = runWriter . unDecl
-  emit    = Decl . tell
+  runEmit = runWriter . flip runStateT mempty . unDecl
+  emit    = Decl . lift . tell
+
+stmtToDecl :: Stmt r a -> Decl a
+stmtToDecl = Decl . unStmt
 
 ------------------------------------------------------------------------------
 -- Preprocessor directives
@@ -479,8 +516,9 @@ declareGlobal :: forall a. InhabitedType a
               => String        -- ^ Global name
               -> Decl (LVal a) -- ^ Global variable
 declareGlobal name = do
-  emitLn (typeOf (undefined :: a) name)
-  return $ Val name
+  name' <- Decl $ freshName name
+  emitLn $ typeOf (undefined :: a) name' ++ ";"
+  return $ Val name'
 
 ------------------------------------------------------------------------------
 -- Lists
@@ -504,9 +542,10 @@ declareFun :: forall f.
   ) => String       -- ^ Function name
     -> Decl (Fun f) -- ^ Resulting function declaration
 declareFun name = do
-  emitLn $ res "" <+> name
+  name' <- Decl $ freshName name
+  emitLn $ res "" <+> name'
         ++ tuple (map ($ "") params) ++ ";"
-  return $ Fun name
+  return $ Fun name'
   where (params, res) = funTypeView (undefined :: f)
 
 -- | Get a list of parameter names of a C function.
@@ -525,8 +564,7 @@ class FunDef params fun def res | params fun res -> def where
 instance FunDef () (IO a) (Stmt a ()) res where
   funDef () f defline _ body = do
     emit $ defline ++ " "
-    braces $
-      emit $ snd . runEmit $ body
+    stmtToDecl $ scope $ body
     return $ Fun f
 instance FunDef params b def res
       => FunDef (String :> params) (a -> b) (LVal a -> def) res where
@@ -543,16 +581,17 @@ defineNewFun :: forall f def nl names.
     -> (Fun f -> def) -- ^ Function from input to function body;
                       --   the function can be used recursively
     -> Decl (Fun f)
-defineNewFun name params bodyf =
+defineNewFun name params bodyf = do
+  name' <- Decl $ freshName name
   funDef (nameList params)
-         name
-         defline
+         name'
+         (defline name')
          (undefined :: f)
-         (bodyf $ Fun name)
+         (bodyf $ Fun name')
   where paramNames          = funParams (nameList params)
                                         (undefined :: f)
         (inptypes, restype) = funTypeView (undefined :: f)
-        defline    = restype "" <+> name ++ tuple (zipWith ($) inptypes
+        defline n = restype "" <+> n ++ tuple (zipWith ($) inptypes
                                                                paramNames)
 
 -- | Define a function that has been declared before.
@@ -621,11 +660,12 @@ defineStruct :: forall t nl names fields.
   , StructBody nl fields
   , StructFields t nl fields
   ) => names       -- ^ Field names
-    -> Decl fields -- ^ Feidl accessors
+    -> Decl fields -- ^ Field accessors
 defineStruct ns = do
   emit $ typeOf (undefined :: Struct t) "" ++ " {\n"
-  indent $ mapM_ (emitLn . (++ ";")) $ structBody (nameList ns)
-                                                  (undefined :: fields)
+  stmtToDecl $
+    indent $ mapM_ (emitLn . (++ ";"))
+           $ structBody (nameList ns) (undefined :: fields)
   emit "};\n"
   return $ structFields (nameList ns) (undefined :: t)
 

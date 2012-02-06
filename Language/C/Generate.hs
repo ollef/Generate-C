@@ -5,6 +5,7 @@ module Language.C.Generate
     Generate, generate
   -- * C types
   , Val, LVal, RVal, Ptr, Fun, Struct, Type, typeOf, rval
+  , InhabitedType
   -- * Expressions
   , sizeof, cond
   -- ** Pointers

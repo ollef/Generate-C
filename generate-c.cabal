@@ -23,6 +23,8 @@ Extra-source-files: README
 Cabal-version: >= 1.6
 Library
     Build-depends:   base < 6
+                   , containers   == 0.4.*
+                   , mtl          == 2.0.*
                    , transformers == 0.2.*
     Exposed-modules: Language.C.Generate
                    , Language.C.Generate.Stdlib

@@ -15,8 +15,8 @@ program = do
 
   comment "Define MyStruct"
 
-  (   (Field getx :: MyStruct :-> Int)
-   :> (Field gety :: MyStruct :-> Float)
+  ((Field getx :: MyStruct :-> Int) :>
+   (Field gety :: MyStruct :-> Float)
    ) <- defineStruct ("x" :> "y")
 
   comment "Program entry point"
