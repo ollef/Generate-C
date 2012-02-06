@@ -526,13 +526,18 @@ declareGlobal name = do
 data a :> b = a :> b deriving (Eq, Ord, Show)
 
 class NameList a b | a -> b where
-  nameList :: a -> b
+  nameList :: a -> Decl b
 instance NameList [Char] (String :> ()) where
-  nameList s = s :> ()
+  nameList s = do
+    s' <- Decl $ freshName s
+    return $ s' :> ()
 instance NameList () () where
-  nameList = id
+  nameList = return
 instance NameList as bs => NameList (String :> as) (String :> bs) where
-  nameList (a :> as) = a :> nameList as
+  nameList (a :> as) = do
+    a' <- Decl $ freshName a
+    as' <- nameList as
+    return $ a :> as'
 
 ------------------------------------------------------------------------------
 -- Functions
@@ -569,8 +574,30 @@ instance FunDef () (IO a) (Stmt a ()) res where
 instance FunDef params b def res
       => FunDef (String :> params) (a -> b) (LVal a -> def) res where
   funDef (param :> ps) f defline _ bodyf =
-    funDef ps f defline (undefined :: b) (bodyf $ Val param)
+      funDef ps f defline (undefined :: b) (bodyf $ Val param)
 
+-- | Helper function to define a function that has not been declared before.
+defineNewFun' :: forall f def nl names.
+  ( NameList names nl
+  , FunDef nl f def f
+  , FunParams nl f
+  ) => String         -- ^ Function name
+    -> names          -- ^ Parameter names
+    -> (Fun f -> def) -- ^ Function from input to function body;
+                      --   the function can be used recursively
+    -> Decl (Fun f)
+defineNewFun' name params bodyf = Decl $ inNewScope $ unDecl $ do
+  nl <- nameList params
+  funDef nl
+         name
+         (defline nl)
+         (undefined :: f)
+         (bodyf $ Fun name)
+  where paramNames nl       = funParams nl
+                                        (undefined :: f)
+        (inptypes, restype) = funTypeView (undefined :: f)
+        defline nl = restype "" <+> name ++ tuple (zipWith ($) inptypes
+                                                               (paramNames nl))
 -- | Define a function that has not been declared before.
 defineNewFun :: forall f def nl names.
   ( NameList names nl
@@ -583,16 +610,7 @@ defineNewFun :: forall f def nl names.
     -> Decl (Fun f)
 defineNewFun name params bodyf = do
   name' <- Decl $ freshName name
-  funDef (nameList params)
-         name'
-         (defline name')
-         (undefined :: f)
-         (bodyf $ Fun name')
-  where paramNames          = funParams (nameList params)
-                                        (undefined :: f)
-        (inptypes, restype) = funTypeView (undefined :: f)
-        defline n = restype "" <+> n ++ tuple (zipWith ($) inptypes
-                                                               paramNames)
+  defineNewFun' name' params bodyf
 
 -- | Define a function that has been declared before.
 defineFun :: forall def nl names f.
@@ -604,7 +622,7 @@ defineFun :: forall def nl names f.
     -> def     -- ^ Function from input to function body
     -> Decl () -- ^ Does not return a new function (use the declared one)
 defineFun (Fun name) params bodyf = do
-  _ <- defineNewFun name params (const bodyf) :: Decl (Fun f)
+  _ <- defineNewFun' name params (const bodyf) :: Decl (Fun f)
   return ()
 
 ------------------------------------------------------------------------------
@@ -663,11 +681,12 @@ defineStruct :: forall t nl names fields.
     -> Decl fields -- ^ Field accessors
 defineStruct ns = do
   emit $ typeOf (undefined :: Struct t) "" ++ " {\n"
+  nl <- nameList ns
   stmtToDecl $
     indent $ mapM_ (emitLn . (++ ";"))
-           $ structBody (nameList ns) (undefined :: fields)
+           $ structBody nl (undefined :: fields)
   emit "};\n"
-  return $ structFields (nameList ns) (undefined :: t)
+  return $ structFields nl (undefined :: t)
 
 ------------------------------------------------------------------------------
 -- Comments
