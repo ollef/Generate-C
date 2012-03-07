@@ -10,7 +10,9 @@
            , Rank2Types #-}
 -- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate.Generate where
-import Prelude hiding ((<), (+))
+import Prelude hiding ((+), (-), (*), (/),
+                       (==), (/=), (<), (>), (<=), (>=),
+                       (&&), (||))
 import qualified Prelude
 
 import Control.Applicative
@@ -537,7 +539,7 @@ instance NameList as bs => NameList (String :> as) (String :> bs) where
   nameList (a :> as) = do
     a' <- Decl $ freshName a
     as' <- nameList as
-    return $ a :> as'
+    return $ a' :> as'
 
 ------------------------------------------------------------------------------
 -- Functions
