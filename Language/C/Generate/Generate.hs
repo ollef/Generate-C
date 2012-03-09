@@ -10,7 +10,9 @@
            , Rank2Types #-}
 -- | A reasonably typesafe embedded C code generation DSL.
 module Language.C.Generate.Generate where
-import Prelude hiding ((<), (+))
+import Prelude hiding ((+), (-), (*), (/),
+                       (==), (/=), (<), (>), (<=), (>=),
+                       (&&), (||))
 import qualified Prelude
 
 import Control.Applicative
@@ -307,19 +309,19 @@ call :: forall f res. FunArgs f res
 call f = funArgs f [] (undefined :: f)
 
 -- | Get a Haskell function taking the arguments from a C function's type
-class SFunArgs funtype restype | funtype -> restype where
-  sfunArgs :: Fun a -> [String] -> funtype -> restype
-instance SFunArgs (IO a) (Stmt r ()) where
-  sfunArgs (Fun f) args _ = stmt $ Val $ f ++ tuple (reverse args)
-instance SFunArgs b b' => SFunArgs (a -> b) (Val lr a -> b') where
-  sfunArgs f args _ = \val ->
-    (sfunArgs f (unVal val : args) (undefined :: b) :: b')
+class SFunArgs funtype r restype | funtype r -> restype where
+  sfunArgs :: Fun a -> [String] -> r -> funtype -> restype
+instance SFunArgs (IO a) r (Stmt r ()) where
+  sfunArgs (Fun f) args _  _ = stmt $ Val $ f ++ tuple (reverse args)
+instance SFunArgs b r b' => SFunArgs (a -> b) r (Val lr a -> b') where
+  sfunArgs f args r _ = \val ->
+    (sfunArgs f (unVal val : args) r (undefined :: b) :: b')
 
 -- | A single function call statement
-scall :: forall f res. SFunArgs f res
+scall :: forall f r res. SFunArgs f r res
       => Fun f -- ^ Function
       -> res   -- ^ Arguments and result ('Stmt')
-scall f = sfunArgs f [] (undefined :: f)
+scall f = sfunArgs f [] (undefined :: r) (undefined :: f)
 
 ------------------------------------------------------------------------------
 -- Untrusted code
@@ -537,7 +539,7 @@ instance NameList as bs => NameList (String :> as) (String :> bs) where
   nameList (a :> as) = do
     a' <- Decl $ freshName a
     as' <- nameList as
-    return $ a :> as'
+    return $ a' :> as'
 
 ------------------------------------------------------------------------------
 -- Functions
