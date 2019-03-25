@@ -2,6 +2,7 @@
            , FlexibleContexts
            , FlexibleInstances
            , FunctionalDependencies
+           , GADTs
            , GeneralizedNewtypeDeriving
            , MultiParamTypeClasses
            , ScopedTypeVariables
@@ -9,7 +10,10 @@
            , UndecidableInstances 
            , Rank2Types #-}
 -- | A reasonably typesafe embedded C code generation DSL.
-module Language.C.Generate.Generate where
+module Language.C.Generate.Generate 
+    ( module Language.C.Generate.Generate 
+    , module Data.Proxy
+    ) where
 import Prelude hiding ((+), (-), (*), (/),
                        (==), (/=), (<), (>), (<=), (>=),
                        (&&), (||))
@@ -26,6 +30,7 @@ import qualified Data.Map as M
 import Data.Map(Map)
 import Data.Maybe
 import Data.Monoid
+import Data.Proxy
 
 -------------------------------------------------------------------------------
 -- Fixity declarations
@@ -293,11 +298,11 @@ string x = Val $ "\"" ++ x ++ "\""
 ------------------------------------------------------------------------------
 -- Function calls
 -- | Get a Haskell function taking the arguments from a C function's type
-class FunArgs funtype restype | funtype -> restype where
+class FunArgs funtype restype | restype -> funtype where
   funArgs :: Fun a -> [String] -> funtype -> restype
-instance FunArgs (IO a) (Val R a) where
+instance (a ~ b, lr ~ R) => FunArgs (IO a) (Val lr b) where
   funArgs (Fun f) args _ = Val $ f ++ tuple (reverse args)
-instance FunArgs b b' => FunArgs (a -> b) (Val lr a -> b') where
+instance (a ~ a', FunArgs b b') => FunArgs (a -> b) (Val lr a' -> b') where
   funArgs f args _ = \val ->
     (funArgs f (unVal val : args) (undefined :: b) :: b')
 
@@ -309,11 +314,11 @@ call :: forall f res. FunArgs f res
 call f = funArgs f [] (undefined :: f)
 
 -- | Get a Haskell function taking the arguments from a C function's type
-class SFunArgs funtype r restype | funtype r -> restype where
+class SFunArgs funtype r restype | restype -> r where
   sfunArgs :: Fun a -> [String] -> r -> funtype -> restype
-instance SFunArgs (IO a) r (Stmt r ()) where
+instance (r' ~ r, unit ~ ()) => SFunArgs (IO a) r (Stmt r' unit) where
   sfunArgs (Fun f) args _  _ = stmt $ Val $ f ++ tuple (reverse args)
-instance SFunArgs b r b' => SFunArgs (a -> b) r (Val lr a -> b') where
+instance (SFunArgs b r b', a' ~ Val lr a) => SFunArgs (a -> b) r (a' -> b') where
   sfunArgs f args r _ = \val ->
     (sfunArgs f (unVal val : args) r (undefined :: b) :: b')
 
@@ -647,35 +652,37 @@ class StructClass t where
 
 newtype t :-> a = Field (forall lr. Val lr (Struct t) -> LVal a)
 
+data StructEnd t = StructEnd
+
 class StructBody names fields where
-  structBody :: names -> fields -> [String]
+  structBody :: forall proxy. names -> proxy fields -> [String]
 instance StructBody () () where
   structBody () _ = []
 instance (Type a, StructBody names fields)
       => StructBody ([Char] :> names)
                     (t :-> a :> fields) where
   structBody (n :> ns) _ =
-    typeOf (undefined :: a) n : structBody ns (undefined :: fields)
+    typeOf (undefined :: a) n : structBody ns (Proxy :: Proxy fields)
 instance StructBody ([Char] :> ()) (t :-> a :> ()) =>
          StructBody ([Char] :> ()) (t :-> a) where
-  structBody ns _ = structBody ns (undefined :: t :-> a :> ())
+  structBody ns _ = structBody ns (Proxy :: Proxy (t :-> a :> ()))
 
 class StructFields struct names fields | fields -> struct where
-  structFields :: names -> struct -> fields
-instance StructFields t () () where
-  structFields () _ = ()
+  structFields :: forall proxy. names -> proxy struct -> fields
+instance StructFields t () (StructEnd t) where
+  structFields () _ = StructEnd
 instance StructFields t names fields
       => StructFields t ([Char] :> names)
                         (t :-> a :> fields) where
   structFields (n :> ns) _ =
-    Field (\v -> Val $ unVal v ++ "." ++ n) :> structFields ns (undefined :: t)
-instance StructFields t ([Char] :> ()) (t :-> a :> ()) =>
+    Field (\v -> Val $ unVal v ++ "." ++ n) :> structFields ns (Proxy :: Proxy t)
+instance StructFields t ([Char] :> ()) (t :-> a :> StructEnd t) =>
          StructFields t ([Char] :> ()) (t :-> a) where
-  structFields ns _ = case structFields ns (undefined :: t) :: (t :-> a :> ()) of
-    a :> () -> a
+  structFields ns _ = case structFields ns (Proxy :: Proxy t) :: (t :-> a :> StructEnd t) of
+    a :> StructEnd -> a
 
 defineStruct :: forall t nl names fields.
-  ( Type (Struct t)
+  ( StructClass t
   , NameList names nl
   , StructBody nl fields
   , StructFields t nl fields
@@ -686,9 +693,9 @@ defineStruct ns = do
   nl <- nameList ns
   stmtToDecl $
     indent $ mapM_ (emitLn . (++ ";"))
-           $ structBody nl (undefined :: fields)
+           $ structBody nl (Proxy :: Proxy fields)
   emit "};\n"
-  return $ structFields nl (undefined :: t)
+  return $ structFields nl (Proxy :: Proxy t)
 
 ------------------------------------------------------------------------------
 -- Comments
