@@ -316,7 +316,7 @@ call f = funArgs f [] (undefined :: f)
 -- | Get a Haskell function taking the arguments from a C function's type
 class SFunArgs funtype r restype | restype -> r where
   sfunArgs :: Fun a -> [String] -> r -> funtype -> restype
-instance SFunArgs (IO a) r (Stmt r ()) where
+instance (r' ~ r, unit ~ ()) => SFunArgs (IO a) r (Stmt r' unit) where
   sfunArgs (Fun f) args _  _ = stmt $ Val $ f ++ tuple (reverse args)
 instance (SFunArgs b r b', a' ~ Val lr a) => SFunArgs (a -> b) r (a' -> b') where
   sfunArgs f args r _ = \val ->
